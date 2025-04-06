@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -22,6 +22,7 @@ import { useAuthStore } from '../../store/authStore';
 
 const Login = () => {
   const { login, isAuthenticated, user, loading, error, clearError } = useAuthStore();
+  const navigate = useNavigate();
   
   const [formData, setFormData] = useState({
     email: '',
