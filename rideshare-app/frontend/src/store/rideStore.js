@@ -692,6 +692,8 @@ export const useRideStore = create((set, get) => ({
         return [];
       }
       
+      console.log('Getting ride offers with filters:', filters);
+      
       // Development mode simulation
       if (isDevelopmentWithoutBackend()) {
         // Simulate API delay
@@ -831,15 +833,26 @@ export const useRideStore = create((set, get) => ({
         if (response.data.status === 'success') {
           const rides = response.data.data.rides || [];
           
-          console.log(`Fetched ${rides.length} ride offers`);
+          console.log(`Fetched ${rides.length} ride offers:`, rides);
+          
+          // Map received rides to ensure they have an id for frontend
+          const processedRides = rides.map(ride => {
+            // Create a copy to avoid mutating original
+            const rideCopy = {...ride};
+            // Ensure id exists (use _id if id is missing)
+            if (rideCopy._id && !rideCopy.id) {
+              rideCopy.id = rideCopy._id;
+            }
+            return rideCopy;
+          });
           
           set({
-            rideOffers: rides,
+            rideOffers: processedRides,
             loading: false,
             error: null
           });
           
-          return rides;
+          return processedRides;
         } else {
           throw new Error(response.data.message || 'Failed to fetch ride offers');
         }

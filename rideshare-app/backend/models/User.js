@@ -24,14 +24,15 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      sparse: true, // This allows multiple null values by ensuring index ignores null values
+      sparse: true,
       validate: {
         validator: function(value) {
-          // Allow null values (optional phone number)
+          // Allow null/empty values (optional phone number)
           if (!value) return true;
-          return validator.isMobilePhone(value);
+          // Only accept exactly 10 digits
+          return /^[0-9]{10}$/.test(value);
         },
-        message: 'Please provide a valid phone number'
+        message: 'Phone number must be exactly 10 digits'
       }
     },
     role: {

@@ -100,11 +100,12 @@ const FindRide = () => {
   
   // Handle pagination and display logic in a separate effect
   useEffect(() => {
-    console.log('Ride offers received:', rideOffers?.length || 0);
+    console.log('Ride offers received:', rideOffers);
     
     if (!rideOffers || rideOffers.length === 0) {
       setPaginatedRides([]);
       setTotalPages(1);
+      console.log('No ride offers to display');
       return;
     }
     
@@ -116,9 +117,9 @@ const FindRide = () => {
     });
     
     console.log("Sorted rides:", sortedRides.map(r => ({ 
-      id: r.id, 
-      departure: r.departure?.city,
-      destination: r.destination?.city,
+      id: r.id || r._id, 
+      departure: r.departure?.city || 'Unknown',
+      destination: r.destination?.city || 'Unknown',
       departureTime: r.departureTime ? new Date(r.departureTime).toLocaleString() : 'unknown'
     })));
     
@@ -197,6 +198,12 @@ const FindRide = () => {
   const handleViewRideDetails = (ride) => {
     setSelectedRide(ride);
     
+    // Safety check for location data
+    if (!ride.departure?.location || !ride.destination?.location) {
+      console.error("Ride is missing location data:", ride);
+      return;
+    }
+    
     // Set markers and polyline for the map
     const newMarkers = [
       {
@@ -206,7 +213,7 @@ const FindRide = () => {
           lng: ride.departure.location.lng 
         },
         title: 'Departure',
-        info: ride.departure.address
+        info: ride.departure.address || 'Departure location'
       },
       {
         id: 'destination',
@@ -215,7 +222,7 @@ const FindRide = () => {
           lng: ride.destination.location.lng 
         },
         title: 'Destination',
-        info: ride.destination.address
+        info: ride.destination.address || 'Destination location'
       }
     ];
     
@@ -462,7 +469,8 @@ const FindRide = () => {
                           </Typography>
                         </Box>
                         <Chip 
-                          label={`$${ride.price}`} 
+                          label={ride.price ? `₹${ride.price}` : 
+                            (ride.fare?.estimatedFare ? `₹${ride.fare.estimatedFare}` : 'Price N/A')} 
                           color="primary" 
                           icon={<AttachMoneyIcon />}
                         />
