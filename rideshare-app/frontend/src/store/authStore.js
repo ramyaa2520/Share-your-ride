@@ -242,6 +242,7 @@ export const useAuthStore = create((set, get) => ({
   // Register user
   register: async (userData) => {
     try {
+      console.log('Registration attempt with data:', userData);
       set({ loading: true });
       
       // DEVELOPMENT MODE - For testing frontend without backend
@@ -280,12 +281,15 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // PRODUCTION MODE - Real API call
+      console.log('Sending registration request to:', `${API_URL}/auth/signup`);
       const response = await api.post('/auth/signup', userData);
+      console.log('Registration response:', response.data);
 
       const { token, data } = response.data;
       
       // Save token to local storage
       localStorage.setItem('token', token);
+      localStorage.setItem('userData', JSON.stringify(data.user));
       
       set({
         user: data.user,
@@ -298,11 +302,24 @@ export const useAuthStore = create((set, get) => ({
       return true;
     } catch (error) {
       console.error('Registration failed:', error);
+      console.error('Error response:', error.response?.data);
+      
+      // More specific error handling
+      let errorMessage = 'Registration failed';
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       set({
         loading: false,
-        error: error.response?.data?.message || 'Registration failed'
+        error: errorMessage
       });
-      toast.error(error.response?.data?.message || 'Registration failed');
+      
+      toast.error(errorMessage);
       return false;
     }
   },

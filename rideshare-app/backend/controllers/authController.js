@@ -34,13 +34,17 @@ exports.signup = async (req, res, next) => {
   try {
     console.log('Signup request received:', req.body);
     
-    // Create user without phone number
-    const newUser = await User.create({
+    // Create a new user object with only required fields
+    // Completely omit phoneNumber field to avoid any database conflicts
+    const userData = {
       name: req.body.name,
       email: req.body.email,
       password: req.body.password,
       role: req.body.role || 'user'
-    });
+    };
+    
+    // Create new user without phone number
+    const newUser = await User.create(userData);
     
     // Remove password from output
     newUser.password = undefined;

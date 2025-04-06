@@ -118,9 +118,8 @@ const userSchema = new mongoose.Schema(
 // Create index for geospatial queries
 userSchema.index({ location: '2dsphere' });
 
-// Create a sparse unique index for phoneNumber
-// This ensures uniqueness only for documents that have phoneNumber field
-userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
+// Remove the unique index and make phoneNumber completely optional
+// This ensures we can have multiple users with null/empty phone numbers
 
 // Hash the password before saving
 userSchema.pre('save', async function(next) {

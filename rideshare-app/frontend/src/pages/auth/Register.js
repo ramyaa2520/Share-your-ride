@@ -111,9 +111,8 @@ const Register = () => {
       errors.email = 'Invalid email format';
     }
     
-    if (!formData.phoneNumber.trim()) {
-      errors.phoneNumber = 'Phone number is required';
-    } else if (!phoneRegex.test(formData.phoneNumber.replace(/\D/g, ''))) {
+    // Phone number is now optional
+    if (formData.phoneNumber.trim() && !phoneRegex.test(formData.phoneNumber.replace(/\D/g, ''))) {
       errors.phoneNumber = 'Phone number must be 10 digits';
     }
     
@@ -145,11 +144,10 @@ const Register = () => {
     
     clearError();
     
-    // Combine country code and phone number
+    // Only include name, email and password - omit phone number completely
     const userData = {
       name: formData.name,
       email: formData.email,
-      phoneNumber: `${formData.phoneCountryCode}${formData.phoneNumber}`,
       password: formData.password
     };
     
@@ -233,13 +231,12 @@ const Register = () => {
               <Grid item xs={8} sm={9}>
                 <TextField
                   name="phoneNumber"
-                  label="Phone Number"
+                  label="Phone Number (Optional)"
                   fullWidth
-                  required
                   value={formData.phoneNumber}
                   onChange={handleChange}
                   error={!!formErrors.phoneNumber}
-                  helperText={formErrors.phoneNumber}
+                  helperText={formErrors.phoneNumber || "You can add your phone number later"}
                 />
               </Grid>
               

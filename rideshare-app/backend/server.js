@@ -27,13 +27,45 @@ app.use(morgan('dev'));
 // MongoDB Connection
 const MONGODB_URI = 'mongodb+srv://Riddeshare:Riddeshare@rideshare.c8ijbtr.mongodb.net/?retryWrites=true&w=majority&appName=rideshare';
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch((err) => {
-    console.error('MongoDB connection error:', err);
-    console.warn('Application running without database connection - some features may be limited');
-  });
+// Connection to MongoDB
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI || MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    
+    // Run migration to remove unique index on phoneNumber to fix registration issues
+    try {
+      console.log('Running migration to fix phoneNumber index...');
+      const userCollection = conn.connection.db.collection('users');
+      
+      // First, check if the index exists
+      const indexes = await userCollection.indexes();
+      const phoneIndex = indexes.find(index => 
+        index.key && index.key.phoneNumber === 1 && index.unique === true
+      );
+      
+      if (phoneIndex) {
+        console.log('Found problematic phoneNumber index, dropping it...');
+        await userCollection.dropIndex('phoneNumber_1');
+        console.log('Successfully dropped phoneNumber index');
+      } else {
+        console.log('No problematic phoneNumber index found, no action needed');
+      }
+    } catch (migrationError) {
+      console.error('Error in migration:', migrationError);
+      // Continue with server startup even if migration fails
+    }
+    
+    return conn;
+  } catch (error) {
+    console.error(`Error connecting to MongoDB: ${error.message}`);
+    process.exit(1);
+  }
+};
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -64,8 +96,14 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+
+// Connect to MongoDB and start server
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('Failed to connect to MongoDB:', err);
 });
 
 module.exports = app; 
