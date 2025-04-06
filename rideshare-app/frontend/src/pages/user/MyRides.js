@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -31,6 +31,7 @@ import {
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useTheme } from '@mui/material/styles';
+import { toast } from 'react-toastify';
 
 // Icons
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
@@ -48,6 +49,7 @@ import EventIcon from '@mui/icons-material/Event';
 import AirlineSeatReclineNormalIcon from '@mui/icons-material/AirlineSeatReclineNormal';
 
 import { useRideStore } from '../../store/rideStore';
+import { useAuthStore } from '../../store/authStore';
 
 // Extend dayjs with relativeTime plugin
 dayjs.extend(relativeTime);
@@ -305,6 +307,7 @@ const RideCard = ({ ride, type, onAction, actionText, actionIcon, secondaryActio
 
 const MyRides = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuthStore();
   const { 
     myOfferedRides, 
     myRequestedRides, 
@@ -323,12 +326,69 @@ const MyRides = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(true);
   
+  // Check authentication first
   useEffect(() => {
-    // Fetch offered and requested rides on component mount
-    getMyOfferedRides();
-    getMyRequestedRides();
-  }, [getMyOfferedRides, getMyRequestedRides]);
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('You must be logged in to view your rides');
+      navigate('/login');
+    } else {
+      setLocalLoading(true);
+      
+      // Fetch offered and requested rides
+      Promise.all([
+        getMyOfferedRides(),
+        getMyRequestedRides()
+      ]).then(() => {
+        setLocalLoading(false);
+      }).catch(err => {
+        console.error('Error fetching rides:', err);
+        setLocalLoading(false);
+      });
+    }
+  }, [navigate, getMyOfferedRides, getMyRequestedRides]);
+  
+  // Show loading state
+  if (localLoading || loading) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8 }}>
+        <CircularProgress size={60} />
+        <Typography variant="h6" color="text.secondary" sx={{ mt: 3 }}>
+          Loading your rides...
+        </Typography>
+      </Box>
+    );
+  }
+  
+  // Show error state
+  if (error) {
+    return (
+      <Box sx={{ p: 4 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+        <Button 
+          variant="contained" 
+          color="primary"
+          onClick={() => {
+            setLocalLoading(true);
+            Promise.all([
+              getMyOfferedRides(),
+              getMyRequestedRides()
+            ]).then(() => {
+              setLocalLoading(false);
+            }).catch(() => {
+              setLocalLoading(false);
+            });
+          }}
+        >
+          Try Again
+        </Button>
+      </Box>
+    );
+  }
   
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -610,12 +670,6 @@ const MyRides = () => {
       <Typography variant="h4" gutterBottom>
         My Rides
       </Typography>
-      
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
       
       <Paper sx={{ mb: 3 }}>
         <Tabs

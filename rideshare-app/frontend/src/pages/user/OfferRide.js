@@ -43,18 +43,36 @@ const vehicleColors = [
 
 const OfferRide = () => {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated, checkAuth } = useAuthStore();
   const { createRideOffer, loading, error } = useRideStore();
   const theme = useTheme();
   
   // Check authentication at the beginning
   useEffect(() => {
     const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('userData');
+    
     if (!token) {
       toast.error('You must be logged in to offer a ride');
       navigate('/login');
+      return;
     }
-  }, [navigate]);
+    
+    if (!userData) {
+      // If we have a token but no user data, try to refresh auth
+      checkAuth().then(() => {
+        const refreshedUserData = localStorage.getItem('userData');
+        if (!refreshedUserData) {
+          toast.error('Session data is missing. Please log in again.');
+          navigate('/login');
+        }
+      }).catch(err => {
+        console.error('Auth refresh failed:', err);
+        toast.error('Authentication error. Please log in again.');
+        navigate('/login');
+      });
+    }
+  }, [navigate, checkAuth]);
 
   const [formData, setFormData] = useState({
     departureAddress: '',

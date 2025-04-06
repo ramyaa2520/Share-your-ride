@@ -25,9 +25,47 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Add response interceptor to handle auth errors globally
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      // Clear token on auth errors
+      console.log('Authentication error in API response, clearing token');
+      localStorage.removeItem('token');
+      
+      // Optionally redirect to login page if not already on login page
+      if (window.location.pathname !== '/login') {
+        toast.error('Your session has expired. Please log in again.');
+        // Use setTimeout to avoid React state updates during rendering
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Check if we're in development mode without backend
 const isDevelopmentWithoutBackend = () => {
   return process.env.REACT_APP_NODE_ENV === 'development' && process.env.REACT_APP_USE_BACKEND !== 'true';
+};
+
+// Add a function to refresh the auth status periodically
+const setupAuthRefresh = (checkAuthFn) => {
+  // Set up a periodic check every 5 minutes
+  const interval = setInterval(() => {
+    const token = localStorage.getItem('token');
+    // Only attempt refresh if a token exists
+    if (token) {
+      checkAuthFn();
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+  
+  return interval;
 };
 
 export const useAuthStore = create((set, get) => ({
@@ -35,6 +73,7 @@ export const useAuthStore = create((set, get) => ({
   isAuthenticated: false,
   loading: false,
   error: null,
+  authInterval: null,
 
   // Check if user is already authenticated
   checkAuth: async () => {
@@ -82,16 +121,39 @@ export const useAuthStore = create((set, get) => ({
       const response = await api.get('/auth/me');
 
       if (response.data && response.data.data && response.data.data.user) {
+        // Update user data in localStorage to keep it fresh
+        localStorage.setItem('userData', JSON.stringify(response.data.data.user));
+        
         set({
           user: response.data.data.user,
           isAuthenticated: true,
           loading: false,
           error: null
         });
+        
+        // Setup periodic auth refresh if not already set
+        const currentInterval = get().authInterval;
+        if (!currentInterval) {
+          const interval = setupAuthRefresh(get().checkAuth);
+          set({ authInterval: interval });
+        }
       }
     } catch (error) {
       console.error('Authentication check failed:', error);
-      localStorage.removeItem('token');
+      
+      // Only clear token if there's an auth error (not network error)
+      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userData');
+        
+        // Clear the refresh interval
+        const currentInterval = get().authInterval;
+        if (currentInterval) {
+          clearInterval(currentInterval);
+          set({ authInterval: null });
+        }
+      }
+      
       set({
         user: null,
         isAuthenticated: false,
@@ -154,6 +216,15 @@ export const useAuthStore = create((set, get) => ({
         loading: false,
         error: null
       });
+      
+      // Setup periodic auth refresh
+      const currentInterval = get().authInterval;
+      if (currentInterval) {
+        clearInterval(currentInterval);
+      }
+      
+      const interval = setupAuthRefresh(get().checkAuth);
+      set({ authInterval: interval });
 
       toast.success('Login successful');
       return true;
@@ -347,10 +418,18 @@ export const useAuthStore = create((set, get) => ({
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('userData');
+    
+    // Clear the refresh interval
+    const currentInterval = get().authInterval;
+    if (currentInterval) {
+      clearInterval(currentInterval);
+    }
+    
     set({
       user: null,
       isAuthenticated: false,
-      error: null
+      error: null,
+      authInterval: null
     });
     toast.success('Logged out successfully');
   },

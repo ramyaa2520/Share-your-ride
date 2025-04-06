@@ -32,6 +32,30 @@ api.interceptors.request.use(
   }
 );
 
+// Add response interceptor to handle auth errors globally
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      // Clear token on auth errors
+      console.log('Authentication error in API response, clearing token');
+      localStorage.removeItem('token');
+      
+      // Optionally redirect to login page
+      if (window.location.pathname !== '/login') {
+        toast.error('Your session has expired. Please log in again.');
+        // Use setTimeout to avoid React state updates during rendering
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const useRideStore = create((set, get) => ({
   rides: [],
   rideOffers: [], // Add ride offers array to store available ride offers
@@ -62,6 +86,18 @@ export const useRideStore = create((set, get) => ({
   getUserRides: async () => {
     try {
       set({ loading: true });
+      set({ error: null });
+      
+      // Check for token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ 
+          loading: false, 
+          error: 'Authentication required',
+          rides: []
+        });
+        return [];
+      }
       
       // Development mode simulation
       if (isDevelopmentWithoutBackend()) {
@@ -91,32 +127,63 @@ export const useRideStore = create((set, get) => ({
         return;
       }
       
-      const token = localStorage.getItem('token');
+      console.log('Fetching user rides...');
       
-      const response = await api.get('/rides/user-rides');
+      try {
+        const response = await api.get('/rides/user-rides');
 
-      // Sort rides by requestedAt date (newest first)
-      const sortedRides = response.data.data.rides.sort((a, b) => {
-        return new Date(b.requestedAt) - new Date(a.requestedAt);
-      });
+        if (response.data.status === 'success') {
+          // Sort rides by requestedAt date (newest first)
+          const sortedRides = response.data.data.rides.sort((a, b) => {
+            return new Date(b.requestedAt) - new Date(a.requestedAt);
+          });
 
-      // Check for any active ride
-      const activeRide = sortedRides.find(ride => 
-        ['requested', 'searching_driver', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(ride.status)
-      );
-      
-      set({
-        rides: sortedRides,
-        currentRide: activeRide || null,
-        loading: false,
-        error: null
-      });
+          // Check for any active ride
+          const activeRide = sortedRides.find(ride => 
+            ['requested', 'searching_driver', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(ride.status)
+          );
+          
+          console.log(`Fetched ${sortedRides.length} user rides`);
+          
+          set({
+            rides: sortedRides,
+            currentRide: activeRide || null,
+            loading: false,
+            error: null
+          });
+          
+          return sortedRides;
+        } else {
+          throw new Error(response.data.message || 'Failed to fetch ride history');
+        }
+      } catch (apiError) {
+        // Check for authentication issues
+        if (apiError.response && (apiError.response.status === 401 || apiError.response.status === 403)) {
+          localStorage.removeItem('token');
+          set({
+            loading: false,
+            error: 'Your session has expired. Please log in again.',
+            rides: []
+          });
+          toast.error('Your session has expired. Please log in again.');
+        } else {
+          set({
+            loading: false,
+            error: apiError.response?.data?.message || 'Failed to fetch ride history',
+            rides: []
+          });
+        }
+        console.error('Error fetching user rides:', apiError);
+        return [];
+      }
     } catch (error) {
-      console.error('Error fetching user rides:', error);
+      console.error('Error in getUserRides:', error);
       set({
         loading: false,
-        error: error.response?.data?.message || 'Failed to fetch ride history'
+        error: error.message || 'An unexpected error occurred',
+        rides: []
       });
+      return [];
     }
   },
 
@@ -507,10 +574,35 @@ export const useRideStore = create((set, get) => ({
       set({ loading: true });
       set({ error: null }); // Clear errors
       
-      const userData = JSON.parse(localStorage.getItem('userData'));
-      if (!userData) {
+      // Check for a valid token first
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ loading: false });
         toast.error('You must be logged in to create ride offers');
         return null;
+      }
+      
+      // Also check for user data as a backup
+      const userData = JSON.parse(localStorage.getItem('userData'));
+      if (!userData) {
+        // If token exists but userData doesn't, try to fix it by refreshing user data
+        try {
+          const response = await api.get('/auth/me');
+          if (response.data && response.data.data && response.data.data.user) {
+            // Save the user data to localStorage
+            localStorage.setItem('userData', JSON.stringify(response.data.data.user));
+          } else {
+            set({ loading: false });
+            toast.error('Session data is missing. Please log in again.');
+            return null;
+          }
+        } catch (error) {
+          set({ loading: false });
+          toast.error('Authentication error. Please log in again.');
+          // Clear invalid token
+          localStorage.removeItem('token');
+          return null;
+        }
       }
       
       // Log the offer data for debugging
@@ -539,8 +631,8 @@ export const useRideStore = create((set, get) => ({
           }
         },
         rideType: 'economy',
-        estimatedDistance: 10, // Calculate this based on departure and destination
-        estimatedDuration: 30, // Calculate this in minutes
+        estimatedDistance: rideData.estimatedDistance || 10,
+        estimatedDuration: rideData.estimatedDuration || 30,
         paymentMethod: 'credit_card',
         status: 'requested',
         departureCity: rideData.departureCity,
@@ -552,7 +644,7 @@ export const useRideStore = create((set, get) => ({
           currency: 'INR'
         },
         vehicle: rideData.vehicle || { model: '', color: '', licensePlate: '' },
-        phoneNumber: rideData.phoneNumber || userData.phoneNumber || '',
+        phoneNumber: rideData.phoneNumber || (userData ? userData.phoneNumber : ''),
         notes: rideData.notes || ''
       };
       
@@ -587,6 +679,18 @@ export const useRideStore = create((set, get) => ({
   getRideOffers: async (filters = {}) => {
     try {
       set({ loading: true });
+      set({ error: null });
+      
+      // Check for token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ 
+          loading: false, 
+          error: 'Authentication required',
+          rideOffers: []
+        });
+        return [];
+      }
       
       // Development mode simulation
       if (isDevelopmentWithoutBackend()) {
@@ -719,20 +823,53 @@ export const useRideStore = create((set, get) => ({
         if (value) queryParams.append(key, value);
       });
       
-      const response = await api.get(`/rides/offers?${queryParams}`);
+      console.log('Fetching ride offers with params:', queryParams.toString());
       
-      set({
-        rideOffers: response.data.data.offers,
-        loading: false,
-        error: null
-      });
-      
-      return response.data.data.offers;
+      try {
+        const response = await api.get(`/rides/offers?${queryParams}`);
+        
+        if (response.data.status === 'success') {
+          const rides = response.data.data.rides || [];
+          
+          console.log(`Fetched ${rides.length} ride offers`);
+          
+          set({
+            rideOffers: rides,
+            loading: false,
+            error: null
+          });
+          
+          return rides;
+        } else {
+          throw new Error(response.data.message || 'Failed to fetch ride offers');
+        }
+      } catch (apiError) {
+        // Check for 401/403 errors and handle authentication issues
+        if (apiError.response && (apiError.response.status === 401 || apiError.response.status === 403)) {
+          // Potential token expiration
+          localStorage.removeItem('token');
+          set({
+            loading: false,
+            error: 'Your session has expired. Please log in again.',
+            rideOffers: []
+          });
+          toast.error('Your session has expired. Please log in again.');
+        } else {
+          set({
+            loading: false,
+            error: apiError.response?.data?.message || 'Failed to fetch ride offers',
+            rideOffers: []
+          });
+        }
+        console.error('Error fetching ride offers:', apiError);
+        return [];
+      }
     } catch (error) {
-      console.error('Error fetching ride offers:', error);
+      console.error('Error in getRideOffers:', error);
       set({
         loading: false,
-        error: error.response?.data?.message || 'Failed to fetch ride offers'
+        error: error.message || 'An unexpected error occurred',
+        rideOffers: []
       });
       return [];
     }
