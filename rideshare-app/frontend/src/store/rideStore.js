@@ -264,32 +264,35 @@ export const useRideStore = create((set, get) => ({
   // Request to join a ride
   requestRide: async (rideId, seats = 1) => {
     try {
-      setLoading(true);
-      setError(null);
+      set({ loading: true, error: null });
       
       console.log(`Requesting ride ${rideId} for ${seats} seats`);
       
       // Validate the ride exists
-      const ride = rides.find(r => r._id === rideId);
+      const state = get();
+      const ride = state.rides.find(r => r._id === rideId);
+      
       if (!ride) {
         console.error('Ride not found in store:', rideId);
         toast.error('Ride not found. Please refresh and try again.');
-        setLoading(false);
+        set({ loading: false });
         return;
       }
       
       // Validate seats
       if (!seats || seats < 1 || (ride.availableSeats && seats > ride.availableSeats)) {
         toast.error(`Please request between 1 and ${ride.availableSeats || 1} seats.`);
-        setLoading(false);
+        set({ loading: false });
         return;
       }
       
       // Check if user has already requested this ride
-      const userRequested = ride.requests?.some(req => req.passenger?._id === user?._id);
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const userRequested = ride.requests?.some(req => req.passenger?._id === userData?._id);
+      
       if (userRequested) {
         toast.info('You have already requested this ride.');
-        setLoading(false);
+        set({ loading: false });
         return;
       }
       
@@ -300,33 +303,42 @@ export const useRideStore = create((set, get) => ({
       
       if (response.data.status === 'success' || response.data.success) {
         // Update the ride in the store
-        setRides(rides.map(r => {
-          if (r._id === rideId) {
-            // Add user's request to the ride
-            const newRequest = {
-              _id: response.data.requestId || generateId(),
-              passenger: { _id: user?._id, name: user?.name },
-              status: 'PENDING',
-              seats,
-              createdAt: new Date().toISOString()
-            };
-            
-            return {
-              ...r,
-              requests: [...(r.requests || []), newRequest],
-              availableSeats: r.availableSeats ? Math.max(0, r.availableSeats - seats) : 0
-            };
-          }
-          return r;
-        }));
-        
-        // Add to user rides
-        setUserRides([...userRides, {
-          ...ride,
-          requestStatus: 'PENDING',
-          requestSeats: seats,
-          requestId: response.data.requestId || generateId()
-        }]);
+        set(state => {
+          const updatedRides = state.rides.map(r => {
+            if (r._id === rideId) {
+              // Add user's request to the ride
+              const newRequest = {
+                _id: response.data.requestId || generateId(),
+                passenger: { _id: userData?._id, name: userData?.name },
+                status: 'PENDING',
+                seats,
+                createdAt: new Date().toISOString()
+              };
+              
+              return {
+                ...r,
+                requests: [...(r.requests || []), newRequest],
+                availableSeats: r.availableSeats ? Math.max(0, r.availableSeats - seats) : 0
+              };
+            }
+            return r;
+          });
+          
+          // Add to user rides
+          return {
+            ...state,
+            rides: updatedRides,
+            userRides: [
+              ...state.userRides, 
+              {
+                ...ride,
+                requestStatus: 'PENDING',
+                requestSeats: seats,
+                requestId: response.data.requestId || generateId()
+              }
+            ]
+          };
+        });
         
         toast.success('Ride request sent successfully!');
       } else {
@@ -334,10 +346,13 @@ export const useRideStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Error requesting ride:', error);
-      setError('Failed to request ride: ' + (error.response?.data?.message || error.message));
+      set({ 
+        error: 'Failed to request ride: ' + (error.response?.data?.message || error.message),
+        loading: false 
+      });
       toast.error('Failed to request ride: ' + (error.response?.data?.message || error.message));
     } finally {
-      setLoading(false);
+      set({ loading: false });
     }
   },
 
@@ -1303,11 +1318,13 @@ export const useRideStore = create((set, get) => ({
       set({ loading: true, error: null });
       
       // Make sure we have the ride in our state
-      const ride = rides.find(r => r._id === rideId);
+      const state = get();
+      const ride = state.rides.find(r => r._id === rideId);
+      
       if (!ride) {
         console.error('Ride not found:', rideId);
         toast.error('Could not find the ride. Please refresh and try again.');
-        setLoading(false);
+        set({ loading: false });
         return;
       }
       
@@ -1333,31 +1350,32 @@ export const useRideStore = create((set, get) => ({
           // to give the user immediate feedback
           if (ride) {
             // Remove the request from the ride locally
-            setRides(rides.map(r => {
-              if (r._id === rideId) {
-                return {
-                  ...r,
-                  requests: r.requests?.filter(req => req._id !== requestId) || [],
-                  passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
-                };
-              }
-              return r;
-            }));
-            
-            // If it's in userRides, update that too
-            setUserRides(userRides.map(r => {
-              if (r._id === rideId) {
-                return {
-                  ...r,
-                  requests: r.requests?.filter(req => req._id !== requestId) || [],
-                  passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
-                };
-              }
-              return r;
+            set(state => ({
+              ...state,
+              rides: state.rides.map(r => {
+                if (r._id === rideId) {
+                  return {
+                    ...r,
+                    requests: r.requests?.filter(req => req._id !== requestId) || [],
+                    passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+                  };
+                }
+                return r;
+              }),
+              userRides: state.userRides.map(r => {
+                if (r._id === rideId) {
+                  return {
+                    ...r,
+                    requests: r.requests?.filter(req => req._id !== requestId) || [],
+                    passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+                  };
+                }
+                return r;
+              })
             }));
             
             toast.warning('Request cancelled locally. Server update failed.');
-            setLoading(false);
+            set({ loading: false });
             return;
           }
         }
@@ -1365,27 +1383,28 @@ export const useRideStore = create((set, get) => ({
       
       if (success) {
         // Update the local state to reflect the cancelled request
-        setRides(rides.map(r => {
-          if (r._id === rideId) {
-            return {
-              ...r,
-              requests: r.requests?.filter(req => req._id !== requestId) || [],
-              passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
-            };
-          }
-          return r;
-        }));
-        
-        // Update userRides list if it exists
-        setUserRides(userRides.map(r => {
-          if (r._id === rideId) {
-            return {
-              ...r,
-              requests: r.requests?.filter(req => req._id !== requestId) || [],
-              passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
-            };
-          }
-          return r;
+        set(state => ({
+          ...state,
+          rides: state.rides.map(r => {
+            if (r._id === rideId) {
+              return {
+                ...r,
+                requests: r.requests?.filter(req => req._id !== requestId) || [],
+                passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+              };
+            }
+            return r;
+          }),
+          userRides: state.userRides.map(r => {
+            if (r._id === rideId) {
+              return {
+                ...r,
+                requests: r.requests?.filter(req => req._id !== requestId) || [],
+                passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+              };
+            }
+            return r;
+          })
         }));
         
         toast.success('Ride request cancelled successfully!');
@@ -1394,9 +1413,13 @@ export const useRideStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Error in cancelRideRequest:', error);
+      set({ 
+        error: 'Failed to cancel ride request: ' + (error.response?.data?.message || error.message),
+        loading: false 
+      });
       toast.error('Failed to cancel ride request: ' + (error.response?.data?.message || error.message));
     } finally {
-      setLoading(false);
+      set({ loading: false });
     }
   },
   
