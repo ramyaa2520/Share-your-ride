@@ -903,115 +903,115 @@ export const useRideStore = create((set, get) => ({
     }
   },
 
-  // Get rides offered by the current user
+  // Get user's offered rides
   getMyOfferedRides: async () => {
     try {
       set({ loading: true });
+      set({ error: null });
+      
+      // Check if user is logged in
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ 
+          loading: false,
+          error: 'You must be logged in to view your offered rides',
+          myOfferedRides: []
+        });
+        return [];
+      }
       
       // Development mode simulation
       if (isDevelopmentWithoutBackend()) {
         // Simulate API delay
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Get stored offers
-        const storedOffers = localStorage.getItem('rideOffers');
-        const offers = storedOffers ? JSON.parse(storedOffers) : [];
-        
-        // Get user data
-        const userData = localStorage.getItem('userData');
-        const user = userData ? JSON.parse(userData) : { id: null };
-        
-        // Filter offers by user ID (as driver)
-        const userOffers = offers.filter(offer => offer.driverId === user.id);
-        
-        // Sort by creation date (newest first)
-        userOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        
-        // Add empty join requests array if not present
-        const offersWithRequests = userOffers.map(offer => ({
-          ...offer,
-          joinRequests: offer.joinRequests || []
-        }));
+        // Mock data
+        const mockOfferedRides = [];
         
         set({
-          myOfferedRides: offersWithRequests,
-          loading: false,
-          error: null
+          myOfferedRides: mockOfferedRides,
+          loading: false
         });
         
-        return offersWithRequests;
+        return mockOfferedRides;
       }
       
-      const token = localStorage.getItem('token');
-      
+      // Make API call
       const response = await api.get('/rides/my-offered-rides');
       
-      set({
-        myOfferedRides: response.data.data.offers,
-        loading: false,
-        error: null
-      });
-      
-      return response.data.data.offers;
+      if (response.data.status === 'success') {
+        set({
+          myOfferedRides: response.data.data.rides,
+          loading: false
+        });
+        
+        return response.data.data.rides;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch offered rides');
+      }
     } catch (error) {
       console.error('Error fetching offered rides:', error);
       set({
         loading: false,
-        error: error.response?.data?.message || 'Failed to fetch offered rides'
+        error: error.response?.data?.message || 'Failed to fetch offered rides',
+        myOfferedRides: []
       });
       return [];
     }
   },
   
-  // Get rides requested by the current user
+  // Get user's requested rides
   getMyRequestedRides: async () => {
     try {
       set({ loading: true });
+      set({ error: null });
+      
+      // Check if user is logged in
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ 
+          loading: false,
+          error: 'You must be logged in to view your requested rides',
+          myRequestedRides: []
+        });
+        return [];
+      }
       
       // Development mode simulation
       if (isDevelopmentWithoutBackend()) {
         // Simulate API delay
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Get stored request data
-        const storedRequests = localStorage.getItem('joinRequests');
-        const requests = storedRequests ? JSON.parse(storedRequests) : [];
-        
-        // Get user data
-        const userData = localStorage.getItem('userData');
-        const user = userData ? JSON.parse(userData) : { id: null };
-        
-        // Filter requests by user ID
-        const userRequests = requests.filter(request => request.userId === user.id);
-        
-        // Sort by creation date (newest first)
-        userRequests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        // Mock data
+        const mockRequestedRides = [];
         
         set({
-          myRequestedRides: userRequests,
-          loading: false,
-          error: null
+          myRequestedRides: mockRequestedRides,
+          loading: false
         });
         
-        return userRequests;
+        return mockRequestedRides;
       }
       
-      const token = localStorage.getItem('token');
-      
+      // Make API call
       const response = await api.get('/rides/my-requested-rides');
       
-      set({
-        myRequestedRides: response.data.data.requests,
-        loading: false,
-        error: null
-      });
-      
-      return response.data.data.requests;
+      if (response.data.status === 'success') {
+        set({
+          myRequestedRides: response.data.data.rides,
+          loading: false
+        });
+        
+        return response.data.data.rides;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch requested rides');
+      }
     } catch (error) {
       console.error('Error fetching requested rides:', error);
       set({
         loading: false,
-        error: error.response?.data?.message || 'Failed to fetch requested rides'
+        error: error.response?.data?.message || 'Failed to fetch requested rides',
+        myRequestedRides: []
       });
       return [];
     }

@@ -140,8 +140,31 @@ exports.login = async (req, res) => {
       driverInfo = await Driver.findOne({ user: user._id });
     }
 
-    // Send token
-    createSendToken(user, 200, res);
+    // Create JWT token
+    const token = signToken(user._id);
+
+    // Remove password from output
+    user.password = undefined;
+
+    // Create user data object to be returned
+    const userData = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
+      role: user.role,
+      profilePicture: user.profilePicture,
+      driver: driverInfo
+    };
+
+    // Send token and user data
+    res.status(200).json({
+      status: 'success',
+      token,
+      data: {
+        user: userData
+      }
+    });
   } catch (err) {
     res.status(400).json({
       status: 'fail',

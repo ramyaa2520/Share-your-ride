@@ -144,8 +144,9 @@ export const useAuthStore = create((set, get) => ({
 
       const { token, data } = response.data;
       
-      // Save token to local storage
+      // Save token and user data to local storage
       localStorage.setItem('token', token);
+      localStorage.setItem('userData', JSON.stringify(data.user));
       
       set({
         user: data.user,

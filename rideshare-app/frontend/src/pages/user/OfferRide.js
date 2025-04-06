@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,6 +19,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import dayjs from 'dayjs';
 import { toast } from 'react-toastify';
+import { useTheme } from '@mui/material/styles';
 
 // Icons
 import EventIcon from '@mui/icons-material/Event';
@@ -44,7 +45,17 @@ const OfferRide = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { createRideOffer, loading, error } = useRideStore();
+  const theme = useTheme();
   
+  // Check authentication at the beginning
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('You must be logged in to offer a ride');
+      navigate('/login');
+    }
+  }, [navigate]);
+
   const [formData, setFormData] = useState({
     departureAddress: '',
     departureCity: '',
@@ -72,6 +83,7 @@ const OfferRide = () => {
     const { name, value } = e.target;
     
     if (name.startsWith('vehicle.')) {
+      // Handle nested vehicle properties
       const vehicleField = name.split('.')[1];
       setFormData(prev => ({
         ...prev,
@@ -80,19 +92,28 @@ const OfferRide = () => {
           [vehicleField]: value
         }
       }));
+      
+      // Clear error if exists
+      if (formErrors[`vehicle${vehicleField}`]) {
+        setFormErrors(prev => ({
+          ...prev,
+          [`vehicle${vehicleField}`]: ''
+        }));
+      }
     } else {
+      // Handle regular fields
       setFormData(prev => ({
         ...prev,
         [name]: value
       }));
-    }
-    
-    // Clear error for this field if it exists
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: null
-      }));
+      
+      // Clear the error for this field if it exists
+      if (formErrors[name]) {
+        setFormErrors(prev => ({
+          ...prev,
+          [name]: ''
+        }));
+      }
     }
   };
   
@@ -459,23 +480,25 @@ const OfferRide = () => {
                 
                 <Grid item xs={12} sm={6}>
                   <TextField
-                    label="Price per Seat"
-                    name="price"
-                    type="number"
-                    value={formData.price}
-                    onChange={handleChange}
                     fullWidth
-                    required
-                    inputProps={{ min: 0, step: "0.01" }}
-                    error={!!formErrors.price}
-                    helperText={formErrors.price}
+                    label="Price per seat"
+                    placeholder="Enter price per seat"
+                    type="number"
+                    name="price"
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <AttachMoneyIcon />
+                          Rs.
                         </InputAdornment>
                       ),
                     }}
+                    value={formData.price}
+                    onChange={handleChange}
+                    error={!!formErrors.price}
+                    helperText={formErrors.price}
+                    required
+                    inputProps={{ min: 0, step: 0.01 }}
+                    margin="normal"
                   />
                 </Grid>
               </Grid>

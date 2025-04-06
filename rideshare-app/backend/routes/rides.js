@@ -11,6 +11,8 @@ router.use(authController.protect);
 router.get('/user-rides', rideController.getUserRides);
 router.get('/driver-rides', authController.restrictTo('driver'), rideController.getDriverRides);
 router.get('/offers', rideController.getRideOffers);
+router.get('/my-offered-rides', rideController.getUserOfferedRides);
+router.get('/my-requested-rides', rideController.getUserRequestedRides);
 
 // Ride requests
 router.post('/', rideController.requestRide);

@@ -733,4 +733,58 @@ exports.getRideOffers = async (req, res) => {
       message: err.message
     });
   }
+};
+
+// Get user's offered rides
+exports.getUserOfferedRides = async (req, res) => {
+  try {
+    // Get all rides where the user is either the user field (as offering rides)
+    const rides = await Ride.find({
+      user: req.user._id,
+      status: { $in: ['requested', 'driver_assigned', 'driver_arrived', 'in_progress'] }
+    }).sort({ requestedAt: -1 });
+    
+    res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (err) {
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+};
+
+// Get user's requested rides (rides they've joined or requested to join)
+exports.getUserRequestedRides = async (req, res) => {
+  try {
+    // Get driver information for the user (if they are a driver)
+    const driver = await Driver.findOne({ user: req.user._id });
+    
+    // Find rides where the user is the driver
+    let driverRides = [];
+    if (driver) {
+      driverRides = await Ride.find({ 
+        driver: driver._id,
+        status: { $in: ['driver_assigned', 'driver_arrived', 'in_progress'] }
+      }).sort({ requestedAt: -1 });
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      results: driverRides.length,
+      data: {
+        rides: driverRides
+      }
+    });
+  } catch (err) {
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
 }; 
