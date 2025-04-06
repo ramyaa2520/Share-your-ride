@@ -30,6 +30,7 @@ const MONGODB_URI = 'mongodb+srv://Riddeshare:Riddeshare@rideshare.c8ijbtr.mongo
 // Connection to MongoDB
 const connectDB = async () => {
   try {
+    console.log('Connecting to MongoDB...');
     const conn = await mongoose.connect(process.env.MONGODB_URI || MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true
@@ -42,10 +43,11 @@ const connectDB = async () => {
       console.log('Running database migrations...');
       const userCollection = conn.connection.db.collection('users');
       
-      // First, check if the phoneNumber index exists and remove it if it's causing problems
+      // Get existing indexes for diagnostics
       const indexes = await userCollection.indexes();
-      console.log('Current indexes:', indexes);
+      console.log('Current indexes:', JSON.stringify(indexes, null, 2));
       
+      // First, check if the phoneNumber index exists and remove it if it's causing problems
       const phoneIndex = indexes.find(index => 
         index.key && index.key.phoneNumber === 1 && index.unique === true
       );
@@ -58,39 +60,63 @@ const connectDB = async () => {
         console.log('No problematic phoneNumber index found, no action needed');
       }
       
-      // Check and fix email index to ensure proper case-insensitive uniqueness
-      const emailIndexes = indexes.filter(index => index.key && index.key.email);
+      // Check if we need to fix the email index
+      const emailIndexes = indexes.filter(index => 
+        index.key && index.key.email && index.name !== '_id_'
+      );
       
-      // If we have multiple email indexes, clean them up
-      if (emailIndexes.length > 1) {
-        console.log('Found multiple email indexes, cleaning up...');
+      console.log(`Found ${emailIndexes.length} email indexes`);
+      
+      // Drop all existing email indexes to avoid conflicts
+      if (emailIndexes.length > 0) {
+        console.log('Dropping existing email indexes to recreate with proper settings...');
+        
         for (const index of emailIndexes) {
-          if (index.name !== '_id_') {
-            try {
-              await userCollection.dropIndex(index.name);
-              console.log(`Dropped email index: ${index.name}`);
-            } catch (indexError) {
-              console.error(`Error dropping index ${index.name}:`, indexError);
-            }
+          try {
+            console.log(`Dropping email index: ${index.name}`);
+            await userCollection.dropIndex(index.name);
+            console.log(`Successfully dropped email index: ${index.name}`);
+          } catch (indexError) {
+            console.error(`Error dropping index ${index.name}:`, indexError);
           }
         }
       }
       
-      // Create or update the email index to be case-insensitive
-      console.log('Creating case-insensitive email index...');
-      await userCollection.createIndex(
-        { email: 1 }, 
-        { 
-          unique: true, 
-          collation: { locale: 'en', strength: 2 }, // Case-insensitive
-          background: true,
-          name: 'email_unique_ci'
+      // Create a proper case-insensitive unique email index
+      try {
+        console.log('Creating case-insensitive email index...');
+        await userCollection.createIndex(
+          { email: 1 }, 
+          { 
+            unique: true, 
+            collation: { locale: 'en', strength: 2 }, // Case-insensitive
+            background: true,
+            name: 'email_unique_ci'
+          }
+        );
+        console.log('Email index created successfully');
+        
+        // Verify the index was created properly
+        const updatedIndexes = await userCollection.indexes();
+        const newEmailIndex = updatedIndexes.find(index => index.name === 'email_unique_ci');
+        
+        if (newEmailIndex) {
+          console.log('Email index verified:', JSON.stringify(newEmailIndex, null, 2));
+        } else {
+          console.error('Email index creation was not verified! Check database manually.');
         }
-      );
-      console.log('Email index updated successfully');
+      } catch (indexCreateError) {
+        console.error('Error creating email index:', indexCreateError);
+        
+        // If we can't create the index because of duplicate values, we need to handle this
+        if (indexCreateError.code === 11000) {
+          console.error('Duplicate email values detected in the database. Index cannot be created.');
+          console.error('Please clean up duplicate email entries manually before running again.');
+        }
+      }
       
     } catch (migrationError) {
-      console.error('Error in migration:', migrationError);
+      console.error('Error in database migration:', migrationError);
       // Continue with server startup even if migration fails
     }
     

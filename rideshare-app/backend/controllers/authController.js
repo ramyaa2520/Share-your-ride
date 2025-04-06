@@ -49,8 +49,11 @@ exports.signup = async (req, res) => {
     console.log('Checking for existing user with email:', normalizedEmail);
     
     try {
-      // Check if user with email already exists before attempting to create
-      const existingUser = await User.findOne({ email: normalizedEmail });
+      // Check if user with email already exists - use case-insensitive comparison
+      const existingUser = await User.findOne({ 
+        email: { $regex: new RegExp('^' + normalizedEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') } 
+      });
+      
       console.log('Existing user lookup result:', existingUser ? 'Found' : 'Not found');
       
       if (existingUser) {

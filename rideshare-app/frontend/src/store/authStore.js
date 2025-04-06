@@ -300,7 +300,15 @@ export const useAuthStore = create((set, get) => ({
         const response = await api.post('/auth/signup', userData);
         console.log('Registration response:', response.data);
 
-        const { token, data } = response.data;
+        if (!response.data) {
+          throw new Error('Empty response received from server');
+        }
+
+        const { token, data, status } = response.data;
+        
+        if (status === 'fail') {
+          throw new Error(response.data.message || 'Registration failed');
+        }
         
         if (!token || !data || !data.user) {
           console.error('Invalid response format from API:', response.data);
@@ -326,14 +334,19 @@ export const useAuthStore = create((set, get) => ({
         if (apiError.response) {
           console.error('API Error response:', {
             status: apiError.response.status,
+            statusText: apiError.response.statusText,
             data: apiError.response.data
           });
         }
         
-        // Handle duplicate email errors
-        if (apiError.response?.data?.message?.includes('already registered') || 
-            (apiError.response?.status === 400 && apiError.response?.data?.message?.includes('Email'))) {
-          const errorMessage = apiError.response?.data?.message || 'Email is already registered';
+        // Handle duplicate email errors - make this check more robust
+        if (
+          (apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('already registered')) || 
+          (apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('email is already')) ||
+          (apiError.response?.status === 400 && apiError.response?.data?.status === 'fail' && 
+           apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('email'))
+        ) {
+          const errorMessage = apiError.response?.data?.message || 'Email is already registered. Please use a different email or login instead.';
           set({
             loading: false,
             error: errorMessage
@@ -342,9 +355,9 @@ export const useAuthStore = create((set, get) => ({
           return false;
         }
         
-        // Handle other validation errors
+        // Handle validation errors
         if (apiError.response?.status === 400) {
-          const errorMessage = apiError.response?.data?.message || 'Validation failed';
+          const errorMessage = apiError.response?.data?.message || 'Validation failed. Please check your input and try again.';
           set({
             loading: false,
             error: errorMessage
@@ -363,6 +376,16 @@ export const useAuthStore = create((set, get) => ({
           return false;
         }
         
+        // For connection issues
+        if (!apiError.response) {
+          set({
+            loading: false,
+            error: 'Could not connect to the server. Please check your internet connection and try again.'
+          });
+          toast.error('Connection failed. Please check your internet connection.');
+          return false;
+        }
+        
         // For other API errors, use the general handler
         throw apiError;
       }
@@ -371,7 +394,8 @@ export const useAuthStore = create((set, get) => ({
       console.error('Error details:', {
         response: error.response,
         data: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        message: error.message
       });
       
       // More specific error handling
