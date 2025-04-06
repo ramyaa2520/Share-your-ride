@@ -327,28 +327,53 @@ const MyRides = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [localLoading, setLocalLoading] = useState(true);
+  const [rides, setRides] = useState([]);
+  const [myOffers, setMyOffers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setError] = useState('');
   
-  // Check authentication first
+  // Fetch rides and ride offers when the component mounts
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('You must be logged in to view your rides');
-      navigate('/login');
-    } else {
-      setLocalLoading(true);
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError('');
       
-      // Fetch offered and requested rides
-      Promise.all([
-        getMyOfferedRides(),
-        getMyRequestedRides()
-      ]).then(() => {
-        setLocalLoading(false);
-      }).catch(err => {
+      try {
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setError('You must be logged in to view your rides');
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log('Fetching rides data...');
+        
+        // Use Promise.all to fetch both sets of data concurrently
+        const [rideData, offerData] = await Promise.all([
+          getRides(),
+          getMyRideOffers()
+        ]);
+        
+        // Sort rides and offers by departure time (most recent first)
+        const sortedRides = rideData?.sort((a, b) => new Date(b.departureTime) - new Date(a.departureTime)) || [];
+        const sortedOffers = offerData?.sort((a, b) => new Date(b.departureTime) - new Date(a.departureTime)) || [];
+        
+        setRides(sortedRides);
+        setMyOffers(sortedOffers);
+        
+        console.log(`Fetched ${sortedRides.length} rides and ${sortedOffers.length} offers`);
+      } catch (err) {
         console.error('Error fetching rides:', err);
-        setLocalLoading(false);
-      });
-    }
-  }, [navigate, getMyOfferedRides, getMyRequestedRides]);
+        setError('Failed to load rides. Please try again.');
+        toast.error('Error loading rides');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, []);
   
   // Show loading state
   if (localLoading || loading) {

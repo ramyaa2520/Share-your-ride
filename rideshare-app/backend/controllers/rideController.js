@@ -646,91 +646,82 @@ exports.getRide = async (req, res) => {
 // Get available ride offers
 exports.getRideOffers = async (req, res) => {
   try {
-    // Build query
+    const now = new Date();
+    
+    // Build the query - look for rides with status 'open' and departure time >= now
     const query = {
-      status: 'requested', // Use a valid status from the enum
-      requestedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // Rides requested in the last 7 days
+      status: 'open',
+      departureTime: { $gte: now }
     };
     
     // Apply filters if provided
     if (req.query.departureLat && req.query.departureLng) {
-      // Filter by pickup location within radius
-      const radius = req.query.departureRadius || 30;
-      query['pickup.location'] = {
+      query['departure.location'] = {
         $near: {
           $geometry: {
             type: 'Point',
             coordinates: [parseFloat(req.query.departureLng), parseFloat(req.query.departureLat)]
           },
-          $maxDistance: radius * 1000 // Convert km to meters
+          $maxDistance: parseInt(req.query.departureRadius || 30) * 1000 // Convert km to meters
         }
       };
     }
     
     if (req.query.destinationLat && req.query.destinationLng) {
-      // Filter by destination location within radius
-      const radius = req.query.destinationRadius || 30;
       query['destination.location'] = {
         $near: {
           $geometry: {
             type: 'Point',
             coordinates: [parseFloat(req.query.destinationLng), parseFloat(req.query.destinationLat)]
           },
-          $maxDistance: radius * 1000 // Convert km to meters
+          $maxDistance: parseInt(req.query.destinationRadius || 30) * 1000 // Convert km to meters
         }
       };
     }
     
     if (req.query.departureDate) {
-      // Filter by requested date
-      const startDate = new Date(req.query.departureDate);
-      startDate.setHours(0, 0, 0, 0);
+      const date = new Date(req.query.departureDate);
+      const nextDay = new Date(date);
+      nextDay.setDate(nextDay.getDate() + 1);
       
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
-      
-      query.requestedAt = {
-        $gte: startDate,
-        $lt: endDate
+      query.departureTime = {
+        $gte: date,
+        $lt: nextDay
       };
     }
     
-    // Remove filters that don't match the schema
-    /* Remove these filters as they don't match the schema
-    if (req.query.availableSeats) {
-      // Filter by available seats
-      query.availableSeats = { $gte: parseInt(req.query.availableSeats) };
+    if (req.query.minSeats) {
+      query.availableSeats = { $gte: parseInt(req.query.minSeats) };
     }
     
-    if (req.query.priceMax) {
-      // Filter by price range
-      query.price = { $lte: parseFloat(req.query.priceMax) };
+    if (req.query.maxPrice) {
+      query['fare.estimatedFare'] = { $lte: parseFloat(req.query.maxPrice) };
     }
     
-    if (req.query.priceMin) {
-      if (!query.price) query.price = {};
-      query.price.$gte = parseFloat(req.query.priceMin);
-    }
-    */
+    console.log('Finding rides with query:', JSON.stringify(query));
     
-    // Fetch rides with the query
+    // Get rides, sort by departure time (nearest first), limit to 50 results
     const rides = await Ride.find(query)
-      .sort({ requestedAt: -1 }) // Sort by most recent first
+      .sort({ departureTime: 1 })
       .limit(50)
-      .populate('driver', 'name ratings vehicle')
-      .populate('user', 'name ratings');
+      .populate('driver', 'name profilePhoto rating')
+      .populate('user', 'name profilePhoto');
     
-    res.status(200).json({
+    console.log(`Found ${rides.length} rides matching criteria`);
+    
+    return res.status(200).json({
       status: 'success',
       results: rides.length,
       data: {
         rides
       }
     });
-  } catch (err) {
-    res.status(400).json({
-      status: 'fail',
-      message: err.message
+  } catch (error) {
+    console.error('Error getting ride offers:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to get ride offers',
+      error: error.message
     });
   }
 };
@@ -785,6 +776,46 @@ exports.getUserRequestedRides = async (req, res) => {
     res.status(400).json({
       status: 'fail',
       message: err.message
+    });
+  }
+};
+
+// Get user's own ride offers
+exports.getMyRideOffers = async (req, res) => {
+  try {
+    // Ensure user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'You must be logged in to view your ride offers'
+      });
+    }
+    
+    console.log(`Fetching ride offers for user: ${req.user._id}`);
+    
+    // Find all rides where the user is the driver (created the ride)
+    const rides = await Ride.find({ 
+      driver: req.user._id 
+    })
+    .sort({ departureTime: -1 }) // Sort by departure time, most recent first
+    .populate('driver', 'name profilePhoto rating')
+    .populate('user', 'name profilePhoto');
+    
+    console.log(`Found ${rides.length} ride offers for user ${req.user._id}`);
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (error) {
+    console.error('Error getting user ride offers:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to get your ride offers',
+      error: error.message
     });
   }
 }; 

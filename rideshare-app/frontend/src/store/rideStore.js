@@ -1000,18 +1000,14 @@ export const useRideStore = create((set, get) => ({
         const storedOffers = localStorage.getItem('rideOffers');
         const offers = storedOffers ? JSON.parse(storedOffers) : [];
         
-        // Get driver data
+        // Filter to get only the current driver's offers
         const userData = localStorage.getItem('userData');
-        const driver = userData ? JSON.parse(userData) : { id: null };
+        const user = userData ? JSON.parse(userData) : { id: 'driver-1' };
         
-        // Filter offers by driver ID
-        const driverOffers = offers.filter(offer => offer.driverId === driver.id);
-        
-        // Sort by creation date (newest first)
-        driverOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        const driverOffers = offers.filter(offer => offer.driverId === user.id);
         
         set({
-          rideOffers: driverOffers,
+          driverOffers,
           loading: false,
           error: null
         });
@@ -1019,22 +1015,24 @@ export const useRideStore = create((set, get) => ({
         return driverOffers;
       }
       
-      const token = localStorage.getItem('token');
+      const response = await api.get('/rides/driver');
       
-      const response = await api.get('/rides/driver-offers');
-      
-      set({
-        rideOffers: response.data.data.offers,
-        loading: false,
-        error: null
-      });
-      
-      return response.data.data.offers;
+      if (response.data.status === 'success') {
+        set({
+          driverOffers: response.data.data.rides,
+          loading: false,
+          error: null
+        });
+        
+        return response.data.data.rides;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch driver offers');
+      }
     } catch (error) {
       console.error('Error fetching driver offers:', error);
       set({
         loading: false,
-        error: error.response?.data?.message || 'Failed to fetch ride offers'
+        error: error.response?.data?.message || 'Failed to fetch driver offers'
       });
       return [];
     }
@@ -1465,5 +1463,82 @@ export const useRideStore = create((set, get) => ({
   },
 
   // Clear errors
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  // Get my ride offerings as a user
+  getMyRideOffers: async () => {
+    try {
+      set({ loading: true });
+      set({ error: null });
+      
+      // Check for valid token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        set({ 
+          loading: false, 
+          error: 'Authentication required',
+          myOffers: []
+        });
+        toast.error('Please login to see your ride offers');
+        return [];
+      }
+      
+      // Development mode simulation
+      if (isDevelopmentWithoutBackend()) {
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Get stored offers
+        const storedOffers = localStorage.getItem('rideOffers');
+        const offers = storedOffers ? JSON.parse(storedOffers) : [];
+        
+        // Filter to get only the current user's offers
+        const userData = localStorage.getItem('userData');
+        const user = userData ? JSON.parse(userData) : { id: 'user-1' };
+        
+        const userOffers = offers.filter(offer => offer.userId === user.id);
+        
+        set({
+          myOffers: userOffers,
+          loading: false,
+          error: null
+        });
+        
+        return userOffers;
+      }
+      
+      console.log('Fetching user ride offers...');
+      const response = await api.get('/rides/offers/my');
+      
+      if (response.data.status === 'success') {
+        const offers = response.data.data.rides || [];
+        console.log(`Fetched ${offers.length} user ride offers`);
+        
+        set({
+          myOffers: offers,
+          loading: false,
+          error: null
+        });
+        
+        return offers;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch your ride offers');
+      }
+    } catch (error) {
+      console.error('Error fetching user ride offers:', error);
+      
+      // Check for authentication errors
+      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        localStorage.removeItem('token');
+        toast.error('Your session has expired. Please log in again.');
+      }
+      
+      set({
+        loading: false,
+        error: error.response?.data?.message || 'Failed to fetch your ride offers',
+        myOffers: []
+      });
+      return [];
+    }
+  }
 })); 

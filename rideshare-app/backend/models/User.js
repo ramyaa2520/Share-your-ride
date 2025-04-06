@@ -24,9 +24,11 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: [true, 'Please provide your phone number'],
+      sparse: true, // This allows multiple null values by ensuring index ignores null values
       validate: {
         validator: function(value) {
+          // Allow null values (optional phone number)
+          if (!value) return true;
           return validator.isMobilePhone(value);
         },
         message: 'Please provide a valid phone number'
@@ -112,6 +114,10 @@ const userSchema = new mongoose.Schema(
 
 // Create index for geospatial queries
 userSchema.index({ location: '2dsphere' });
+
+// Create a sparse unique index for phoneNumber
+// This ensures uniqueness only for documents that have phoneNumber field
+userSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true });
 
 // Hash the password before saving
 userSchema.pre('save', async function(next) {

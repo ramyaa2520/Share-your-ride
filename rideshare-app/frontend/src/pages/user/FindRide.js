@@ -87,29 +87,53 @@ const FindRide = () => {
   
   useEffect(() => {
     const fetchRides = async () => {
-      await getRideOffers();
+      console.log('Fetching ride offers...');
+      try {
+        await getRideOffers();
+      } catch (err) {
+        console.error('Error fetching ride offers:', err);
+      }
     };
     
     fetchRides();
   }, [getRideOffers]);
   
-  // Add effect to handle pagination whenever rideOffers changes
+  // Handle pagination and display logic in a separate effect
   useEffect(() => {
+    console.log('Ride offers received:', rideOffers?.length || 0);
+    
     if (!rideOffers || rideOffers.length === 0) {
       setPaginatedRides([]);
       setTotalPages(1);
       return;
     }
     
+    // Sort by departure time (soonest first)
+    const sortedRides = [...rideOffers].sort((a, b) => {
+      const dateA = new Date(a.departureTime || 0);
+      const dateB = new Date(b.departureTime || 0);
+      return dateA - dateB;
+    });
+    
+    console.log("Sorted rides:", sortedRides.map(r => ({ 
+      id: r.id, 
+      departure: r.departure?.city,
+      destination: r.destination?.city,
+      departureTime: r.departureTime ? new Date(r.departureTime).toLocaleString() : 'unknown'
+    })));
+    
     // Calculate total pages
-    const total = Math.ceil(rideOffers.length / itemsPerPage);
-    setTotalPages(total);
+    const total = Math.ceil(sortedRides.length / itemsPerPage);
+    setTotalPages(total || 1);
     
     // Get current page items
     const startIndex = (page - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    setPaginatedRides(rideOffers.slice(startIndex, endIndex));
-  }, [rideOffers, page]);
+    const currentPageRides = sortedRides.slice(startIndex, endIndex);
+    console.log(`Displaying rides ${startIndex+1}-${Math.min(endIndex, sortedRides.length)} of ${sortedRides.length}`);
+    
+    setPaginatedRides(currentPageRides);
+  }, [rideOffers, page, itemsPerPage]);
   
   const handleDeparturePlaceChange = (place) => {
     if (!place) return;
