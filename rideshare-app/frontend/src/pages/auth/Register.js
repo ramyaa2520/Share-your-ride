@@ -24,20 +24,7 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import PersonIcon from '@mui/icons-material/Person';
-import PhoneIcon from '@mui/icons-material/Phone';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
-
-// Country codes
-const countryCodes = [
-  { code: '+91', country: 'India' },
-  { code: '+1', country: 'USA' },
-  { code: '+44', country: 'UK' },
-  { code: '+61', country: 'Australia' },
-  { code: '+86', country: 'China' },
-  { code: '+49', country: 'Germany' },
-  { code: '+33', country: 'France' },
-  { code: '+971', country: 'UAE' }
-];
 
 const Register = () => {
   const navigate = useNavigate();
@@ -46,8 +33,6 @@ const Register = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phoneCountryCode: '+91', // Default to India country code
-    phoneNumber: '',
     password: '',
     confirmPassword: '',
     agreeToTerms: false
@@ -99,7 +84,6 @@ const Register = () => {
   const validateForm = () => {
     const errors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^\d{10}$/;
     
     if (!formData.name.trim()) {
       errors.name = 'Name is required';
@@ -109,11 +93,6 @@ const Register = () => {
       errors.email = 'Email is required';
     } else if (!emailRegex.test(formData.email)) {
       errors.email = 'Invalid email format';
-    }
-    
-    // Phone number is now optional
-    if (formData.phoneNumber.trim() && !phoneRegex.test(formData.phoneNumber.replace(/\D/g, ''))) {
-      errors.phoneNumber = 'Phone number must be 10 digits';
     }
     
     if (!formData.password) {
@@ -144,7 +123,7 @@ const Register = () => {
     
     clearError();
     
-    // Only include name, email and password - omit phone number completely
+    // Only include name, email and password
     const userData = {
       name: formData.name,
       email: formData.email,
@@ -195,6 +174,13 @@ const Register = () => {
                   onChange={handleChange}
                   error={!!formErrors.name}
                   helperText={formErrors.name}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PersonIcon />
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
               
@@ -209,34 +195,13 @@ const Register = () => {
                   onChange={handleChange}
                   error={!!formErrors.email}
                   helperText={formErrors.email}
-                />
-              </Grid>
-              
-              <Grid item xs={4} sm={3}>
-                <TextField
-                  select
-                  label="Code"
-                  name="phoneCountryCode"
-                  value={formData.phoneCountryCode}
-                  onChange={handleChange}
-                  fullWidth
-                >
-                  {countryCodes.map((option) => (
-                    <MenuItem key={option.code} value={option.code}>
-                      {option.code}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={8} sm={9}>
-                <TextField
-                  name="phoneNumber"
-                  label="Phone Number (Optional)"
-                  fullWidth
-                  value={formData.phoneNumber}
-                  onChange={handleChange}
-                  error={!!formErrors.phoneNumber}
-                  helperText={formErrors.phoneNumber || "You can add your phone number later"}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon />
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
               
@@ -244,13 +209,31 @@ const Register = () => {
                 <TextField
                   name="password"
                   label="Password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   fullWidth
                   required
                   value={formData.password}
                   onChange={handleChange}
                   error={!!formErrors.password}
                   helperText={formErrors.password}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LockIcon />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label="toggle password visibility"
+                          onClick={() => setShowPassword(!showPassword)}
+                          edge="end"
+                        >
+                          {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
                 />
               </Grid>
               
@@ -258,13 +241,31 @@ const Register = () => {
                 <TextField
                   name="confirmPassword"
                   label="Confirm Password"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   fullWidth
                   required
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   error={!!formErrors.confirmPassword}
                   helperText={formErrors.confirmPassword}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LockIcon />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label="toggle password visibility"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          edge="end"
+                        >
+                          {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
                 />
               </Grid>
               
@@ -300,7 +301,7 @@ const Register = () => {
             
             <Grid container justifyContent="flex-end" sx={{ mt: 2 }}>
               <Grid item>
-                <Link component={Link} to="/login" variant="body2">
+                <Link to="/login">
                   Already have an account? Sign in
                 </Link>
               </Grid>

@@ -243,6 +243,14 @@ export const useAuthStore = create((set, get) => ({
   register: async (userData) => {
     try {
       console.log('Registration attempt with data:', userData);
+      
+      // Ensure there's no phone number field at all in the userData
+      if (userData.phoneNumber || userData.phoneCountryCode) {
+        console.log('Removing phone number fields from registration data');
+        const { phoneNumber, phoneCountryCode, ...cleanUserData } = userData;
+        userData = cleanUserData;
+      }
+      
       set({ loading: true });
       
       // DEVELOPMENT MODE - For testing frontend without backend
@@ -281,7 +289,9 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // PRODUCTION MODE - Real API call
-      console.log('Sending registration request to:', `${API_URL}/auth/signup`);
+      console.log('Sending registration request to API server:', `${API_URL}/auth/signup`);
+      console.log('Registration payload:', JSON.stringify(userData));
+      
       const response = await api.post('/auth/signup', userData);
       console.log('Registration response:', response.data);
 
@@ -302,7 +312,11 @@ export const useAuthStore = create((set, get) => ({
       return true;
     } catch (error) {
       console.error('Registration failed:', error);
-      console.error('Error response:', error.response?.data);
+      console.error('Error details:', {
+        response: error.response,
+        data: error.response?.data,
+        status: error.response?.status
+      });
       
       // More specific error handling
       let errorMessage = 'Registration failed';

@@ -30,65 +30,58 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // User registration
-exports.signup = async (req, res, next) => {
+exports.signup = async (req, res) => {
   try {
-    console.log('Signup request received:', req.body);
+    console.log('Signup attempt with data:', JSON.stringify(req.body));
     
-    // Create a new user object with only required fields
-    // Completely omit phoneNumber field to avoid any database conflicts
-    const userData = {
-      name: req.body.name,
-      email: req.body.email,
-      password: req.body.password,
-      role: req.body.role || 'user'
-    };
+    // Extract only the fields needed for user creation
+    const { name, email, password } = req.body;
     
-    // Create new user without phone number
-    const newUser = await User.create(userData);
-    
+    // Create a new user with only required fields
+    const newUser = await User.create({
+      name,
+      email,
+      password
+    });
+
+    // Create a token for the newly registered user
+    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN,
+    });
+
     // Remove password from output
     newUser.password = undefined;
-    
-    // Create token
-    const token = jwt.sign(
-      { id: newUser._id },
-      process.env.JWT_SECRET || JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN }
-    );
-    
-    console.log('User created successfully:', newUser._id);
-    
+
     res.status(201).json({
       status: 'success',
       token,
       data: {
-        user: newUser
-      }
+        user: newUser,
+      },
     });
   } catch (err) {
-    console.error('Error in signup:', err);
+    console.error('Signup error:', err);
     
-    // Handle validation errors more gracefully
+    // Handle validation errors
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map(val => val.message);
       return res.status(400).json({
-        status: 'error',
-        message: messages.join('. ')
+        status: 'fail',
+        message: messages.join(', ')
       });
     }
     
-    // Handle duplicate email
-    if (err.code === 11000 && err.keyPattern && err.keyPattern.email) {
+    // Handle duplicate email error
+    if (err.code === 11000) {
       return res.status(400).json({
-        status: 'error',
-        message: 'Email is already in use. Please use a different email address.'
+        status: 'fail',
+        message: 'Email is already registered. Please use a different email or login instead.'
       });
     }
-    
-    // Handle all other errors
-    return res.status(400).json({
+
+    res.status(500).json({
       status: 'error',
-      message: err.message
+      message: 'Error creating user account. Please try again later.'
     });
   }
 };

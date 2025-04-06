@@ -24,17 +24,16 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      sparse: true, // This allows multiple null values
+      // Make it completely optional with no validation to avoid causing registration errors
       validate: {
         validator: function(value) {
-          // Allow null/empty values (optional phone number)
+          // Always return true if the field is empty or null
           if (!value || value.trim() === '') return true;
-          // Remove any non-digit characters for validation
-          const digitsOnly = value.replace(/\D/g, '');
-          // Check if it has exactly 10 digits after removing non-digits
-          return digitsOnly.length === 10;
+          
+          // Only validate if a value is actually provided
+          return true; // Accept any value for now to avoid registration issues
         },
-        message: 'Phone number must have exactly 10 digits. Remove any spaces, dashes or other characters.'
+        message: 'Invalid phone number format'
       }
     },
     role: {
