@@ -34,24 +34,11 @@ exports.signup = async (req, res, next) => {
   try {
     console.log('Signup request received:', req.body);
     
-    // Clean up phone number field
-    let phoneNumber = req.body.phoneNumber;
-    if (phoneNumber) {
-      // Remove any non-digit characters
-      phoneNumber = phoneNumber.replace(/\D/g, '');
-      // If after cleanup it's empty or not 10 digits, set to null
-      if (phoneNumber.length !== 10) {
-        phoneNumber = null;
-      }
-    } else {
-      phoneNumber = null;
-    }
-    
+    // Create user without phone number
     const newUser = await User.create({
       name: req.body.name,
       email: req.body.email,
       password: req.body.password,
-      phoneNumber: phoneNumber,
       role: req.body.role || 'user'
     });
     
@@ -61,8 +48,8 @@ exports.signup = async (req, res, next) => {
     // Create token
     const token = jwt.sign(
       { id: newUser._id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
+      process.env.JWT_SECRET || JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN }
     );
     
     console.log('User created successfully:', newUser._id);
@@ -77,20 +64,20 @@ exports.signup = async (req, res, next) => {
   } catch (err) {
     console.error('Error in signup:', err);
     
-    // Handle duplicate key error for phone number specifically
-    if (err.code === 11000 && err.keyPattern && err.keyPattern.phoneNumber) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'This phone number is already registered. Please use a different phone number or leave it blank.'
-      });
-    }
-    
     // Handle validation errors more gracefully
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map(val => val.message);
       return res.status(400).json({
         status: 'error',
         message: messages.join('. ')
+      });
+    }
+    
+    // Handle duplicate email
+    if (err.code === 11000 && err.keyPattern && err.keyPattern.email) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email is already in use. Please use a different email address.'
       });
     }
     
@@ -219,18 +206,39 @@ exports.protect = async (req, res, next) => {
     }
 
     if (!token) {
+      console.log('No token provided in request');
       return res.status(401).json({
         status: 'fail',
-        message: 'You are not logged in. Please log in to access.'
+        message: 'Authentication required. Please log in to access this resource.'
       });
     }
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+      console.log('Token verified successfully for user:', decoded.id);
+    } catch (verifyError) {
+      console.log('Token verification failed:', verifyError.name);
+      if (verifyError.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+          status: 'fail',
+          message: 'Invalid token. Please log in again.'
+        });
+      }
+      if (verifyError.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          status: 'fail', 
+          message: 'Your session has expired. Please log in again.'
+        });
+      }
+      throw verifyError;
+    }
 
     // Check if user still exists
     const currentUser = await User.findById(decoded.id);
     if (!currentUser) {
+      console.log('User no longer exists:', decoded.id);
       return res.status(401).json({
         status: 'fail',
         message: 'The user belonging to this token no longer exists.'
@@ -239,23 +247,13 @@ exports.protect = async (req, res, next) => {
 
     // Grant access to protected route
     req.user = currentUser;
+    console.log('Access granted to protected route for user:', currentUser._id);
     next();
   } catch (err) {
-    if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Invalid token. Please log in again.'
-      });
-    }
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        status: 'fail',
-        message: 'Your token has expired. Please log in again.'
-      });
-    }
+    console.error('Authentication error:', err);
     res.status(401).json({
       status: 'fail',
-      message: 'Authentication failed'
+      message: 'Authentication failed. Please try logging in again.'
     });
   }
 };

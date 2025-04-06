@@ -10,20 +10,17 @@ const isDevelopmentWithoutBackend = () => {
 // Update the API calls to use environment variable for API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Add a utility function to create axios instance with proper configuration
+// Configure axios instance with auth interceptor
 const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api/v1'
 });
 
-// Update the token handling
+// Add request interceptor to include JWT token in all requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -32,25 +29,16 @@ api.interceptors.request.use(
   }
 );
 
-// Add response interceptor to handle auth errors globally
+// Handle 401 Unauthorized responses globally
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      // Clear token on auth errors
-      console.log('Authentication error in API response, clearing token');
+    if (error.response && error.response.status === 401) {
+      console.log('Token expired or invalid - clearing token');
+      // Clear invalid token
       localStorage.removeItem('token');
-      
       // Optionally redirect to login page
-      if (window.location.pathname !== '/login') {
-        toast.error('Your session has expired. Please log in again.');
-        // Use setTimeout to avoid React state updates during rendering
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 100);
-      }
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
@@ -91,6 +79,7 @@ export const useRideStore = create((set, get) => ({
       // Check for token
       const token = localStorage.getItem('token');
       if (!token) {
+        console.error('No token available for getUserRides');
         set({ 
           loading: false, 
           error: 'Authentication required',
@@ -99,90 +88,46 @@ export const useRideStore = create((set, get) => ({
         return [];
       }
       
-      // Development mode simulation
-      if (isDevelopmentWithoutBackend()) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Get stored ride data or create empty array
-        const storedRides = localStorage.getItem('userRides');
-        const rides = storedRides ? JSON.parse(storedRides) : [];
-        
-        // Sort rides by requestedAt date (newest first)
-        const sortedRides = rides.sort((a, b) => {
-          return new Date(b.requestedAt) - new Date(a.requestedAt);
-        });
-        
-        // Check for any active ride
-        const activeRide = sortedRides.find(ride => 
-          ['requested', 'searching_driver', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(ride.status)
-        );
+      // Log the headers being sent
+      console.log('Sending auth header:', `Bearer ${token.substring(0, 15)}...`);
+      
+      const response = await api.get('/rides/user-rides');
+      
+      if (response.data.status === 'success') {
+        const rides = response.data.data.rides || [];
+        console.log(`Fetched ${rides.length} user rides`);
         
         set({
-          rides: sortedRides,
-          currentRide: activeRide || null,
+          rides,
           loading: false,
           error: null
         });
-        return;
-      }
-      
-      console.log('Fetching user rides...');
-      
-      try {
-        const response = await api.get('/rides/user-rides');
-
-        if (response.data.status === 'success') {
-          // Sort rides by requestedAt date (newest first)
-          const sortedRides = response.data.data.rides.sort((a, b) => {
-            return new Date(b.requestedAt) - new Date(a.requestedAt);
-          });
-
-          // Check for any active ride
-          const activeRide = sortedRides.find(ride => 
-            ['requested', 'searching_driver', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(ride.status)
-          );
-          
-          console.log(`Fetched ${sortedRides.length} user rides`);
-          
-          set({
-            rides: sortedRides,
-            currentRide: activeRide || null,
-            loading: false,
-            error: null
-          });
-          
-          return sortedRides;
-        } else {
-          throw new Error(response.data.message || 'Failed to fetch ride history');
-        }
-      } catch (apiError) {
-        // Check for authentication issues
-        if (apiError.response && (apiError.response.status === 401 || apiError.response.status === 403)) {
-          localStorage.removeItem('token');
-          set({
-            loading: false,
-            error: 'Your session has expired. Please log in again.',
-            rides: []
-          });
-          toast.error('Your session has expired. Please log in again.');
-        } else {
-          set({
-            loading: false,
-            error: apiError.response?.data?.message || 'Failed to fetch ride history',
-            rides: []
-          });
-        }
-        console.error('Error fetching user rides:', apiError);
-        return [];
+        
+        return rides;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch rides');
       }
     } catch (error) {
       console.error('Error in getUserRides:', error);
-      set({
-        loading: false,
-        error: error.message || 'An unexpected error occurred',
-        rides: []
-      });
+      
+      // Check for auth errors
+      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        // Clear token on auth errors
+        localStorage.removeItem('token');
+        set({ 
+          loading: false, 
+          error: 'Your session has expired. Please log in again.',
+          rides: []
+        });
+        toast.error('Your session has expired. Please log in again.');
+      } else {
+        set({
+          loading: false,
+          error: error.response?.data?.message || 'Failed to fetch rides',
+          rides: []
+        });
+        toast.error('Error loading rides. Please try again.');
+      }
       return [];
     }
   },

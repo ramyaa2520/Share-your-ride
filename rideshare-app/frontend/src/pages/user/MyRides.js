@@ -345,13 +345,23 @@ const MyRides = () => {
         // Check authentication
         const token = localStorage.getItem('token');
         if (!token) {
-          setError('You must be logged in to view your rides');
-          setIsLoading(false);
-          setLocalLoading(false);
-          return;
+          // Try to restore from session storage
+          const backupToken = sessionStorage.getItem('backup_token');
+          if (backupToken) {
+            localStorage.setItem('token', backupToken);
+            sessionStorage.removeItem('backup_token');
+            console.log('Restored token from session storage');
+          } else {
+            setError('You must be logged in to view your rides');
+            setIsLoading(false);
+            setLocalLoading(false);
+            toast.error('Authentication required. Please log in.');
+            navigate('/login');
+            return;
+          }
         }
         
-        console.log('Fetching rides data...');
+        console.log('Fetching rides data with token:', token ? token.substring(0, 15) + '...' : 'None');
         
         // Use Promise.all to fetch both sets of data concurrently
         const [rideData, offerData] = await Promise.all([
@@ -383,8 +393,16 @@ const MyRides = () => {
         console.log(`Fetched ${sortedRides.length} rides and ${sortedOffers.length} offers`);
       } catch (err) {
         console.error('Error fetching rides:', err);
-        setError('Failed to load rides. Please try again.');
-        toast.error('Error loading rides');
+        
+        // Handle authentication errors specifically
+        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+          setError('Authentication failed. Please log in again.');
+          toast.error('Your session has expired. Please log in again.');
+          navigate('/login');
+        } else {
+          setError('Failed to load rides. Please try again.');
+          toast.error('Error loading rides');
+        }
       } finally {
         setIsLoading(false);
         setLocalLoading(false);
@@ -392,7 +410,7 @@ const MyRides = () => {
     };
     
     fetchData();
-  }, [getUserRides, getMyRideOffers, getMyOfferedRides, myOfferedRides]);
+  }, [getUserRides, getMyRideOffers, getMyOfferedRides, myOfferedRides, navigate]);
   
   // Show loading state
   if (isLoading) {
@@ -449,11 +467,19 @@ const MyRides = () => {
     // Let's directly use the ride ID we have
     const actualId = typeof rideId === 'object' ? (rideId._id || rideId.id) : rideId;
     
+    // Save the current auth token to session storage as a backup
+    // This ensures it persists through the navigation even if localStorage is cleared
+    const token = localStorage.getItem('token');
+    if (token) {
+      sessionStorage.setItem('backup_token', token);
+    }
+    
     // Navigate with the token preserved
     navigate(`/rides/${actualId}`, { 
       state: { 
         previousPage: 'myrides', 
-        preserveAuth: true 
+        preserveAuth: true,
+        token: token // Also pass token in state as an extra precaution
       } 
     });
   };

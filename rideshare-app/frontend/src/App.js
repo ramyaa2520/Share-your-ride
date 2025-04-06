@@ -44,6 +44,19 @@ function App() {
     checkAuth();
   }, [checkAuth]);
 
+  useEffect(() => {
+    // Restore token from session storage if it exists
+    const backupToken = sessionStorage.getItem('backup_token');
+    const currentToken = localStorage.getItem('token');
+    
+    if (backupToken && !currentToken) {
+      console.log('Restoring authentication token from backup');
+      localStorage.setItem('token', backupToken);
+      // Clear the backup after restoring
+      sessionStorage.removeItem('backup_token');
+    }
+  }, []);
+
   return (
     <Routes>
       {/* Public routes */}
