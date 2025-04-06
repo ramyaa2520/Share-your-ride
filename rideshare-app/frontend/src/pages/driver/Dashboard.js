@@ -27,6 +27,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import AddIcon from '@mui/icons-material/Add';
 import ListIcon from '@mui/icons-material/List';
 import StarIcon from '@mui/icons-material/Star';
+import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee';
 import MapComponent from '../../components/map/MapComponent';
 import { useAuthStore } from '../../store/authStore';
 import { useRideStore } from '../../store/rideStore';
@@ -296,7 +297,23 @@ const DriverDashboard = () => {
                 <ListItem>
                   <ListItemText 
                     primary="Fare"
-                    secondary={`$${currentRide.fare.estimatedFare.toFixed(2)}`}
+                    secondary={
+                      <Typography variant="body1" color="text.secondary" component="div">
+                        <Grid container>
+                          <Grid item xs={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Total Fare:
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="body2" color="text.secondary" align="right">
+                              <CurrencyRupeeIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                              {currentRide.fare.estimatedFare.toFixed(2)}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Typography>
+                    }
                     primaryTypographyProps={{ variant: 'body2' }}
                     secondaryTypographyProps={{ variant: 'body1' }}
                   />
@@ -535,8 +552,9 @@ const DriverDashboard = () => {
                           <Typography variant="subtitle2" color="text.secondary">
                             Fare
                           </Typography>
-                          <Typography variant="h6" color="primary.main">
-                            ${ride.fare.actualFare || ride.fare.estimatedFare.toFixed(2)}
+                          <Typography variant="body2" color="text.secondary">
+                            <CurrencyRupeeIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                            {ride.fare.actualFare || ride.fare.estimatedFare.toFixed(2)}
                           </Typography>
                         </Box>
                         <Button 

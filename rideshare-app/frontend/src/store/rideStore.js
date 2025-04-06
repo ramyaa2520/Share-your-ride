@@ -302,7 +302,14 @@ export const useRideStore = create((set, get) => ({
         return request;
       }
       
-      const response = await api.post(`/rides/${rideId}/request`);
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const requestData = {
+        seats: 1,  // Default to 1 seat
+        message: 'I would like to join this ride',
+        phoneNumber: userData.phoneNumber || ''
+      };
+      
+      const response = await api.post(`/rides/${rideId}/request`, requestData);
       
       if (response.data.status === 'success') {
         set({ requesting: false });
@@ -1279,20 +1286,46 @@ export const useRideStore = create((set, get) => ({
   },
   
   // Cancel a ride request
-  cancelRideRequest: async (rideId, reason) => {
+  cancelRideRequest: async (requestId) => {
     try {
       set({ loading: true, error: null });
       
-      const response = await api.post(`/rides/${rideId}/cancel`, { 
-        reason: reason || 'Request cancelled by user' 
-      });
+      // For development without backend
+      if (isDevelopmentWithoutBackend()) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Update state to remove the request
+        set(state => ({
+          myRequestedRides: state.myRequestedRides.filter(
+            request => request.id !== requestId && request._id !== requestId
+          ),
+          loading: false
+        }));
+        
+        toast.success('Request cancelled successfully');
+        return true;
+      }
+      
+      const response = await api.delete(`/rides/requests/${requestId}`);
       
       if (response.data.status === 'success') {
-        set({ loading: false });
-        toast.success('Ride request cancelled successfully!');
-        return response.data.data;
+        // Update state to remove the request from myRequestedRides
+        set(state => {
+          // Find and remove the request
+          const updatedRequests = state.myRequestedRides.filter(
+            req => req._id !== requestId && req.id !== requestId
+          );
+          
+          return {
+            myRequestedRides: updatedRequests,
+            loading: false
+          };
+        });
+        
+        toast.success('Request cancelled successfully');
+        return true;
       } else {
-        throw new Error('Failed to cancel ride request');
+        throw new Error(response.data.message || 'Failed to cancel request');
       }
     } catch (error) {
       console.error('Error cancelling ride request:', error);

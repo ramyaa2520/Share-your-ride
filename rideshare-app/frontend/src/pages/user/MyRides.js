@@ -354,13 +354,14 @@ const MyRides = () => {
       await getUserRides();
     } catch (error) {
       console.error('Error fetching rides:', error);
+      setError("Could not load rides. Please try again later.");
     }
   };
   
   // Fetch rides on component mount
   useEffect(() => {
     fetchRides();
-  }, []);
+  }, [getUserRides]);
   
   // Fetch rides and ride offers when the component mounts
   useEffect(() => {
@@ -579,43 +580,54 @@ const MyRides = () => {
   };
   
   const handleViewDetails = (ride) => {
-    setSelectedRide(ride);
-    setDetailsOpen(true);
-    
-    // Set markers for the map
-    if (ride.pickup?.location?.coordinates && ride.destination?.location?.coordinates) {
-      const pickupCoords = ride.pickup.location.coordinates;
-      const destCoords = ride.destination.location.coordinates;
+    try {
+      setSelectedRide(ride);
+      setDetailsOpen(true);
       
-      const newMarkers = [
-        {
-          id: 'pickup',
-          position: { 
-            lat: pickupCoords[1], 
-            lng: pickupCoords[0] 
+      // If ride has pickup and destination coordinates
+      if (ride.pickup?.location?.coordinates && ride.destination?.location?.coordinates) {
+        const pickupCoords = ride.pickup.location.coordinates;
+        const destCoords = ride.destination.location.coordinates;
+        
+        // Set markers for map
+        const newMarkers = [
+          {
+            id: 'pickup',
+            position: { 
+              lat: pickupCoords[1], 
+              lng: pickupCoords[0] 
+            },
+            title: 'Pickup',
+            info: ride.pickup.address || 'Pickup location'
           },
-          title: 'Pickup',
-          info: ride.pickup.address || 'Pickup location'
-        },
-        {
-          id: 'destination',
-          position: { 
-            lat: destCoords[1], 
-            lng: destCoords[0] 
-          },
-          title: 'Destination',
-          info: ride.destination.address || 'Destination location'
+          {
+            id: 'destination',
+            position: { 
+              lat: destCoords[1], 
+              lng: destCoords[0] 
+            },
+            title: 'Destination',
+            info: ride.destination.address || 'Destination location'
+          }
+        ];
+        
+        setMarkers(newMarkers);
+        setMapCenter({ lat: pickupCoords[1], lng: pickupCoords[0] });
+        
+        try {
+          // Calculate route
+          calculateRoute(
+            { lat: pickupCoords[1], lng: pickupCoords[0] },
+            { lat: destCoords[1], lng: destCoords[0] }
+          );
+        } catch (error) {
+          console.error('Error calculating route:', error);
+          // Silently handle calculation errors - still show the details dialog
         }
-      ];
-      
-      setMarkers(newMarkers);
-      setMapCenter({ lat: pickupCoords[1], lng: pickupCoords[0] });
-      
-      // Calculate route
-      calculateRoute(
-        { lat: pickupCoords[1], lng: pickupCoords[0] },
-        { lat: destCoords[1], lng: destCoords[0] }
-      );
+      }
+    } catch (error) {
+      console.error('Error viewing ride details:', error);
+      // Don't close or redirect even if there's an error
     }
   };
   

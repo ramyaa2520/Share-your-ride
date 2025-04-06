@@ -3,34 +3,38 @@ const Driver = require('../models/Driver');
 const User = require('../models/User');
 
 // Calculate fare based on distance and ride type with Indian Rupee pricing
-const calculateFare = (distance, rideType) => {
-  let baseFare = 50.0; // ₹50 base fare 
+const calculateFare = (distance, rideType, seats = 1) => {
+  // Base fare is calculated per seat
+  let baseFarePerSeat = 226.0; // ₹226 base fare per seat
   let ratePerKm = 15.0; // ₹15 per km for Economy
   
   switch (rideType) {
     case 'economy':
-      baseFare = 50.0;
       ratePerKm = 15.0;
       break;
     case 'comfort':
-      baseFare = 80.0;
       ratePerKm = 20.0;
       break;
     case 'premium':
-      baseFare = 120.0;
       ratePerKm = 30.0;
       break;
     case 'suv':
-      baseFare = 100.0;
       ratePerKm = 25.0;
       break;
     default:
-      baseFare = 50.0;
       ratePerKm = 15.0;
   }
 
+  // Calculate base fare (226rs per seat)
+  const baseFare = baseFarePerSeat * seats;
+  
+  // Calculate distance fare (per km, not affected by number of seats)
   const distanceFare = distance * ratePerKm;
+  
+  // Time fare (per km, not affected by number of seats)
   const timeFare = distance * 2.5; // ₹2.5 per km time charge
+  
+  // Tax on total
   const tax = (baseFare + distanceFare + timeFare) * 0.1; // 10% tax
   
   const totalFare = baseFare + distanceFare + timeFare + tax;
@@ -55,11 +59,12 @@ exports.requestRide = async (req, res) => {
       rideType = 'economy',
       estimatedDistance,
       estimatedDuration,
-      paymentMethod = 'credit_card'
+      paymentMethod = 'credit_card',
+      seats = 1
     } = req.body;
 
-    // Calculate fare
-    const fareDetails = calculateFare(estimatedDistance, rideType);
+    // Calculate fare with seats
+    const fareDetails = calculateFare(estimatedDistance, rideType, seats);
     
     // Create ride request
     const newRide = await Ride.create({
@@ -69,9 +74,11 @@ exports.requestRide = async (req, res) => {
       rideType,
       estimatedDistance,
       estimatedDuration,
+      seats,
       fare: {
         estimatedFare: fareDetails.totalFare,
-        breakdown: fareDetails.breakdown
+        breakdown: fareDetails.breakdown,
+        currency: 'INR'
       },
       paymentMethod,
       status: 'requested'
@@ -994,6 +1001,140 @@ exports.getAllRides = async (req, res) => {
     });
   } catch (err) {
     console.error('Error getting rides:', err);
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+};
+
+// Request to join an existing ride
+exports.requestToJoinRide = async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { seats = 1, message } = req.body;
+    
+    // Find the ride
+    const ride = await Ride.findById(rideId);
+    
+    if (!ride) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Ride not found'
+      });
+    }
+    
+    // Check if ride is available for passengers
+    if (ride.status !== 'searching_driver') {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Cannot join a ride with status: ${ride.status}`
+      });
+    }
+    
+    // Check if user is already a passenger
+    const isAlreadyPassenger = ride.passengers && ride.passengers.some(
+      p => p.user.toString() === req.user._id.toString()
+    );
+    
+    if (isAlreadyPassenger) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'You have already requested to join this ride'
+      });
+    }
+    
+    // Check if there are enough available seats
+    const requestedSeats = parseInt(seats, 10) || 1;
+    const totalPassengerSeats = ride.passengers.reduce(
+      (total, passenger) => total + (passenger.seats || 1), 
+      0
+    );
+    
+    if ((totalPassengerSeats + requestedSeats) > ride.seats) {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Not enough available seats. Only ${ride.seats - totalPassengerSeats} seats left`
+      });
+    }
+    
+    // Get user details
+    const user = await User.findById(req.user._id);
+    
+    // Add the passenger request
+    ride.passengers.push({
+      user: req.user._id,
+      seats: requestedSeats,
+      status: 'pending',
+      message: message || '',
+      contactPhone: user.phoneNumber || '',
+      requestedAt: new Date()
+    });
+    
+    await ride.save();
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Your request to join the ride has been submitted',
+      data: {
+        ride
+      }
+    });
+  } catch (err) {
+    console.error('Error requesting to join ride:', err);
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+};
+
+// Cancel a ride request
+exports.cancelRideRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    
+    // Find rides where the user has a request with this ID
+    const ride = await Ride.findOne({
+      'passengers._id': requestId
+    });
+    
+    if (!ride) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Ride request not found'
+      });
+    }
+    
+    // Find the specific passenger request and verify user owns the request
+    const passengerRequest = ride.passengers.id(requestId);
+    
+    if (!passengerRequest) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Passenger request not found'
+      });
+    }
+    
+    // Verify the request belongs to the current user
+    if (passengerRequest.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You are not authorized to cancel this request'
+      });
+    }
+    
+    // Remove the passenger request
+    ride.passengers.pull(requestId);
+    await ride.save();
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Ride request cancelled successfully',
+      data: null
+    });
+  } catch (err) {
+    console.error('Error cancelling ride request:', err);
     res.status(400).json({
       status: 'fail',
       message: err.message

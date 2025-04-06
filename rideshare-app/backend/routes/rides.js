@@ -18,6 +18,8 @@ router.get('/my-requested-rides', rideController.getUserRequestedRides);
 // Ride requests
 router.post('/', rideController.requestRide);
 router.post('/accept', authController.restrictTo('driver'), rideController.acceptRide);
+router.post('/:rideId/request', rideController.requestToJoinRide);
+router.delete('/requests/:requestId', rideController.cancelRideRequest);
 
 // Ride actions
 router.patch('/:rideId/driver-arrived', authController.restrictTo('driver'), rideController.driverArrived);

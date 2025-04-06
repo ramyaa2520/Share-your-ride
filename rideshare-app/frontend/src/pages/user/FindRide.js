@@ -53,6 +53,10 @@ import DriveEtaIcon from '@mui/icons-material/DriveEta';
 import TripOriginIcon from '@mui/icons-material/TripOrigin';
 import FmdGoodIcon from '@mui/icons-material/FmdGood';
 import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee';
+import TextsmsIcon from '@mui/icons-material/Textsms';
+import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
+import CallIcon from '@mui/icons-material/Call';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
 import { useRideStore } from '../../store/rideStore';
 import PlaceAutocomplete from '../../components/map/PlaceAutocomplete';
@@ -583,87 +587,147 @@ const FindRide = () => {
           ) : (
             <>
               <Grid container spacing={3} sx={{ mb: 3 }}>
-                {availableRides.map(ride => (
-                  <Grid item xs={12} sm={6} md={4} key={ride._id}>
-                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                      <CardContent sx={{ flexGrow: 1 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                          {getRideStatusChip(ride.status)}
-                          <Typography variant="caption" color="text.secondary">
-                            {formatTimeSince(ride.requestedAt)}
-                          </Typography>
-                        </Stack>
-                        
-                        <Box sx={{ mb: 2 }}>
-                          <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-                            <TripOriginIcon color="primary" fontSize="small" />
-                            <Typography variant="body2" noWrap title={ride.pickup?.address}>
-                              {ride.pickup?.address}
-                            </Typography>
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <FmdGoodIcon color="error" fontSize="small" />
-                            <Typography variant="body2" noWrap title={ride.destination?.address}>
-                              {ride.destination?.address}
-                            </Typography>
-                          </Stack>
-                        </Box>
-                        
-                        <Divider sx={{ my: 1.5 }} />
-                        
-                        <Stack direction="row" justifyContent="space-between" mb={1}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <CurrencyRupeeIcon fontSize="small" />
-                            <Typography variant="body1" fontWeight="bold">
-                              ₹{ride.fare?.estimatedFare?.toFixed(2)}
-                            </Typography>
-                          </Stack>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <AirlineSeatReclineNormalIcon fontSize="small" />
-                            <Typography variant="body2">
-                              {ride.availableSeats || '1'} seat(s)
-                            </Typography>
-                          </Stack>
-                        </Stack>
-                        
-                        <Stack direction="row" justifyContent="space-between">
-                          <Typography variant="body2" color="text.secondary">
-                            {ride.estimatedDistance?.toFixed(1)} km
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            ~{Math.round(ride.estimatedDuration || 0)} min
-                          </Typography>
-                        </Stack>
-                        
-                        {ride.vehicle && (
-                          <Box mt={1}>
-                            <Typography variant="body2" color="text.secondary">
-                              {ride.vehicle.model} • {ride.vehicle.licensePlate}
-                            </Typography>
-                          </Box>
-                        )}
+                {availableRides.map((ride) => (
+                  <Grid item xs={12} key={ride._id}>
+                    <Card 
+                      elevation={3}
+                      sx={{ 
+                        mb: 2,
+                        transition: 'transform 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 6
+                        }
+                      }}
+                    >
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={8}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <PersonIcon sx={{ color: 'primary.main', mr: 1 }} />
+                                <Typography variant="subtitle1">
+                                  {ride.user && `${ride.user.name || 'Anonymous User'}`}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                                  {formatTimeSince(ride.requestedAt)}
+                                </Typography>
+                              </Box>
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <TripOriginIcon sx={{ color: 'primary.main', mr: 1 }} fontSize="small" />
+                                <Typography variant="body1" noWrap>
+                                  {ride.pickup?.address || 'Pickup location'}
+                                </Typography>
+                              </Box>
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <FmdGoodIcon sx={{ color: 'error.main', mr: 1 }} fontSize="small" />
+                                <Typography variant="body1" noWrap>
+                                  {ride.destination?.address || 'Destination location'}
+                                </Typography>
+                              </Box>
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <AirlineSeatReclineNormalIcon sx={{ color: 'text.secondary', mr: 1 }} fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                  {ride.seats || 1} {ride.seats === 1 ? 'seat' : 'seats'} available
+                                </Typography>
+                                
+                                <Box sx={{ mx: 2 }}>•</Box>
+                                
+                                <EventIcon sx={{ color: 'text.secondary', mr: 1 }} fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDate(ride.requestedAt || ride.createdAt)}
+                                </Typography>
+                                
+                                <Box sx={{ mx: 2 }}>•</Box>
+                                
+                                <PhoneIcon sx={{ color: 'text.secondary', mr: 1 }} fontSize="small" />
+                                <Typography variant="body2" color="text.secondary">
+                                  {ride.user?.phoneNumber || 'No phone provided'}
+                                </Typography>
+                              </Box>
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', mt: 'auto' }}>
+                                {getRideStatusChip(ride.status)}
+                                
+                                {ride.estimatedDistance && (
+                                  <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                                    <DirectionsCarIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                                    {ride.estimatedDistance.toFixed(1)} km
+                                  </Typography>
+                                )}
+                                
+                                {ride.estimatedDuration && (
+                                  <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                                    <AccessTimeIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                                    {(ride.estimatedDuration / 60).toFixed(0)} min
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          </Grid>
+                          
+                          <Grid item xs={12} md={4}>
+                            <Box 
+                              sx={{ 
+                                display: 'flex', 
+                                flexDirection: 'column', 
+                                height: '100%',
+                                alignItems: { xs: 'flex-start', md: 'flex-end' },
+                                justifyContent: 'space-between'
+                              }}
+                            >
+                              <Box 
+                                sx={{ 
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  alignItems: { xs: 'flex-start', md: 'flex-end' }
+                                }}
+                              >
+                                <Typography variant="h5" sx={{ mb: 1, color: 'primary.main' }}>
+                                  <CurrencyRupeeIcon fontSize="small" />
+                                  {ride.fare?.estimatedFare || 0}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Fare estimate
+                                </Typography>
+                              </Box>
+                              
+                              <Box 
+                                sx={{ 
+                                  display: 'flex', 
+                                  mt: 2,
+                                  flexDirection: { xs: 'row', md: 'column' },
+                                  width: { xs: '100%', md: 'auto' },
+                                  gap: 1
+                                }}
+                              >
+                                <Button
+                                  variant="contained"
+                                  fullWidth
+                                  startIcon={<TextsmsIcon />}
+                                  onClick={() => handleViewRideDetails(ride)}
+                                >
+                                  Details
+                                </Button>
+                                
+                                <Button
+                                  variant="outlined"
+                                  fullWidth
+                                  color="secondary"
+                                  disabled={requestingRideId === ride._id}
+                                  startIcon={requestingRideId === ride._id ? <CircularProgress size={20} /> : <ThumbUpAltIcon />}
+                                  onClick={() => handleRequestRide(ride._id)}
+                                >
+                                  Request Ride
+                                </Button>
+                              </Box>
+                            </Box>
+                          </Grid>
+                        </Grid>
                       </CardContent>
-                      
-                      <CardActions sx={{ px: 2, pb: 2 }}>
-                        <Stack direction="row" spacing={1} width="100%">
-                          <Button 
-                            variant="outlined"
-                            sx={{ flex: 1 }}
-                            onClick={() => handleViewRideDetails(ride)}
-                          >
-                            Details
-                          </Button>
-                          <Button 
-                            variant="contained"
-                            sx={{ flex: 1 }}
-                            onClick={() => handleRequestRide(ride._id)}
-                            disabled={loading || requestingRideId === ride._id}
-                            startIcon={requestingRideId === ride._id ? <CircularProgress size={20} /> : null}
-                          >
-                            Request
-                          </Button>
-                        </Stack>
-                      </CardActions>
                     </Card>
                   </Grid>
                 ))}
@@ -691,274 +755,139 @@ const FindRide = () => {
         maxWidth="md"
         fullWidth
       >
+        <DialogTitle>
+          Ride Details
+          <IconButton
+            aria-label="close"
+            onClick={handleCloseRideDetails}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        
         {selectedRide && (
-          <>
-            <DialogTitle>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Ride Details</Typography>
-                <IconButton onClick={handleCloseRideDetails}>
-                  <CloseIcon />
-                </IconButton>
-              </Stack>
-            </DialogTitle>
-            
-            <DialogContent>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Route Information
-                  </Typography>
-                  
-                  <Paper sx={{ p: 2, mb: 2 }}>
-                    <Stack spacing={2}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <TripOriginIcon color="primary" />
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Pickup Location
-                          </Typography>
-                          <Typography variant="body1">
-                            {selectedRide.pickup?.address}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                      
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <FmdGoodIcon color="error" />
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Destination
-                          </Typography>
-                          <Typography variant="body1">
-                            {selectedRide.destination?.address}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </Stack>
-                  </Paper>
-                  
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Ride Details
-                  </Typography>
-                  
-                  <Paper sx={{ p: 2 }}>
-                    <Grid container spacing={2}>
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Status
-                        </Typography>
-                        {getRideStatusChip(selectedRide.status)}
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Ride Type
-                        </Typography>
-                        <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
-                          {selectedRide.rideType || 'Standard'}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Distance
-                        </Typography>
-                        <Typography variant="body1">
-                          {selectedRide.estimatedDistance?.toFixed(1)} km
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Duration
-                        </Typography>
-                        <Typography variant="body1">
-                          ~{Math.round(selectedRide.estimatedDuration || 0)} minutes
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Estimated Fare
-                        </Typography>
-                        <Typography variant="body1" fontWeight="bold">
-                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Available Seats
-                        </Typography>
-                        <Typography variant="body1">
-                          {selectedRide.availableSeats || '1'}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Requested
-                        </Typography>
-                        <Typography variant="body1">
-                          {formatTimeSince(selectedRide.requestedAt)}
-                        </Typography>
-                      </Grid>
-                      
-                      {selectedRide.vehicle && (
-                        <Grid item xs={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            Vehicle
-                          </Typography>
-                          <Typography variant="body1">
-                            {selectedRide.vehicle.model} • {selectedRide.vehicle.color}
-                          </Typography>
-                          <Typography variant="body2" fontWeight="medium" color="primary">
-                            {selectedRide.vehicle.licensePlate}
-                          </Typography>
-                        </Grid>
-                      )}
-                    </Grid>
-                  </Paper>
-                  
-                  {selectedRide.user && (
-                    <>
-                      <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
-                        Requester Information
-                      </Typography>
-                      
-                      <Paper sx={{ p: 2 }}>
-                        <Stack direction="row" spacing={2} alignItems="center">
-                          <Avatar>
-                            {selectedRide.user.name?.charAt(0) || <PersonIcon />}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body1">
-                              {selectedRide.user.name}
-                            </Typography>
-                            
-                            {/* Display phone number if available */}
-                            {selectedRide.user.phoneNumber && (
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <PhoneIcon fontSize="small" />
-                                <Typography variant="body2">
-                                  <a href={`tel:${selectedRide.user.phoneNumber}`}>
-                                    {selectedRide.user.phoneNumber}
-                                  </a>
-                                </Typography>
-                              </Stack>
-                            )}
-                            
-                            {selectedRide.user.ratings?.average > 0 && (
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Rating 
-                                  value={selectedRide.user.ratings.average} 
-                                  precision={0.5} 
-                                  size="small" 
-                                  readOnly 
-                                />
-                                <Typography variant="body2" color="text.secondary">
-                                  ({selectedRide.user.ratings.count})
-                                </Typography>
-                              </Stack>
-                            )}
-                          </Box>
-                        </Stack>
-                      </Paper>
-                    </>
-                  )}
-                </Grid>
+          <DialogContent>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>Route Information</Typography>
                 
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Route Map
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Status</Typography>
+                  {getRideStatusChip(selectedRide.status)}
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Pickup Location</Typography>
+                  <Typography variant="body1">{selectedRide.pickup?.address}</Typography>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Destination</Typography>
+                  <Typography variant="body1">{selectedRide.destination?.address}</Typography>
+                </Box>
+                
+                <Divider sx={{ my: 2 }} />
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Estimated Distance</Typography>
+                  <Typography variant="body1">{selectedRide.estimatedDistance?.toFixed(1)} km</Typography>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Estimated Duration</Typography>
+                  <Typography variant="body1">{(selectedRide.estimatedDuration / 60)?.toFixed(0)} minutes</Typography>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Available Seats</Typography>
+                  <Typography variant="body1">{selectedRide.seats || 1}</Typography>
+                </Box>
+                
+                <Divider sx={{ my: 2 }} />
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Fare Estimate</Typography>
+                  <Typography variant="h6" color="primary.main">
+                    <CurrencyRupeeIcon fontSize="small" /> {selectedRide.fare?.estimatedFare || 0}
                   </Typography>
-                  
-                  <Paper sx={{ p: 0, overflow: 'hidden', height: 400 }}>
-                    <MapComponent
-                      markers={markers}
-                      polyline={routePolyline}
-                      center={mapCenter}
-                      zoom={10}
-                    />
-                  </Paper>
-                  
-                  <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
-                    Fare Breakdown
-                  </Typography>
-                  
-                  <Paper sx={{ p: 2 }}>
-                    <Grid container spacing={1}>
-                      <Grid item xs={8}>
-                        <Typography variant="body2">Base Fare</Typography>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Typography variant="body2" align="right">
-                          ₹{selectedRide.fare?.breakdown?.baseFare?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={8}>
-                        <Typography variant="body2">Distance Fare</Typography>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Typography variant="body2" align="right">
-                          ₹{selectedRide.fare?.breakdown?.distanceFare?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={8}>
-                        <Typography variant="body2">Time Fare</Typography>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Typography variant="body2" align="right">
-                          ₹{selectedRide.fare?.breakdown?.timeFare?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={8}>
-                        <Typography variant="body2">Tax</Typography>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Typography variant="body2" align="right">
-                          ₹{selectedRide.fare?.breakdown?.tax?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Divider sx={{ my: 1 }} />
-                      </Grid>
-                      
-                      <Grid item xs={8}>
-                        <Typography variant="body1" fontWeight="bold">
-                          Total Fare
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Typography variant="body1" fontWeight="bold" align="right">
-                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
-                        </Typography>
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                </Grid>
+                </Box>
               </Grid>
-            </DialogContent>
-            
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-              <Button onClick={handleCloseRideDetails} variant="outlined">
-                Close
-              </Button>
-              <Button 
-                variant="contained" 
-                color="primary"
-                onClick={() => handleRequestRide(selectedRide._id)}
-                disabled={loading || requestingRideId === selectedRide._id}
-                startIcon={requestingRideId === selectedRide._id ? <CircularProgress size={20} /> : null}
-              >
-                Request Ride
-              </Button>
-            </DialogActions>
-          </>
+              
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom>User Information</Typography>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">User</Typography>
+                  <Typography variant="body1">{selectedRide.user?.name || 'Anonymous'}</Typography>
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Contact Phone</Typography>
+                  <Typography variant="body1">
+                    {selectedRide.user?.phoneNumber || 'No phone number provided'}
+                    {selectedRide.user?.phoneNumber && (
+                      <IconButton 
+                        color="primary" 
+                        size="small" 
+                        component="a" 
+                        href={`tel:${selectedRide.user.phoneNumber}`}
+                        sx={{ ml: 1 }}
+                      >
+                        <CallIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Typography>
+                </Box>
+                
+                {selectedRide.vehicle && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6" gutterBottom>Vehicle Information</Typography>
+                    
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Vehicle Type</Typography>
+                      <Typography variant="body1">{selectedRide.vehicle.vehicleType}</Typography>
+                    </Box>
+                    
+                    {selectedRide.vehicle.make && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary">Make & Model</Typography>
+                        <Typography variant="body1">{selectedRide.vehicle.make} {selectedRide.vehicle.model}</Typography>
+                      </Box>
+                    )}
+                    
+                    {selectedRide.vehicle.licensePlate && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary">License Plate</Typography>
+                        <Typography variant="body1">{selectedRide.vehicle.licensePlate}</Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  fullWidth
+                  startIcon={<ThumbUpAltIcon />}
+                  onClick={() => handleRequestRide(selectedRide._id)}
+                  disabled={requestingRideId === selectedRide._id}
+                >
+                  {requestingRideId === selectedRide._id ? (
+                    <>
+                      <CircularProgress size={24} color="inherit" sx={{ mr: 1 }} />
+                      Requesting...
+                    </>
+                  ) : (
+                    'Request This Ride'
+                  )}
+                </Button>
+              </Grid>
+            </Grid>
+          </DialogContent>
         )}
       </Dialog>
     </Box>
