@@ -1540,5 +1540,79 @@ export const useRideStore = create((set, get) => ({
       });
       return [];
     }
+  },
+
+  // Create test rides with Indian locations
+  createTestRides: async () => {
+    try {
+      set({ loading: true });
+      console.log('Creating test rides with Indian locations...');
+      
+      // Test ride data with Indian locations
+      const testRides = [
+        {
+          departureAddress: 'Connaught Place, New Delhi',
+          departureCity: 'New Delhi',
+          departureLocation: { lat: 28.6329, lng: 77.2195 },
+          destinationAddress: 'Cyber City, Gurugram',
+          destinationCity: 'Gurugram',
+          destinationLocation: { lat: 28.4950, lng: 77.0928 },
+          departureTime: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours from now
+          availableSeats: 3,
+          price: 350,
+          vehicle: { model: 'Maruti Suzuki Swift', color: 'White', licensePlate: 'DL01AB1234' },
+          phoneNumber: '9876543210',
+          notes: 'Daily commute to office'
+        },
+        {
+          departureAddress: 'Andheri, Mumbai',
+          departureCity: 'Mumbai', 
+          departureLocation: { lat: 19.1136, lng: 72.8697 },
+          destinationAddress: 'Bandra, Mumbai',
+          destinationCity: 'Mumbai',
+          destinationLocation: { lat: 19.0596, lng: 72.8295 },
+          departureTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
+          availableSeats: 2,
+          price: 250,
+          vehicle: { model: 'Honda City', color: 'Silver', licensePlate: 'MH02CD5678' },
+          phoneNumber: '8765432109',
+          notes: 'Weekend trip'
+        },
+        {
+          departureAddress: 'Electronic City, Bangalore',
+          departureCity: 'Bangalore',
+          departureLocation: { lat: 12.8399, lng: 77.6770 },
+          destinationAddress: 'MG Road, Bangalore',
+          destinationCity: 'Bangalore',
+          destinationLocation: { lat: 12.9747, lng: 77.6080 },
+          departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+          availableSeats: 4,
+          price: 200,
+          vehicle: { model: 'Toyota Innova', color: 'Black', licensePlate: 'KA01EF9012' },
+          phoneNumber: '7654321098', 
+          notes: 'Daily office commute, AC available'
+        }
+      ];
+      
+      const createRidePromises = testRides.map(ride => get().createRideOffer(ride));
+      await Promise.all(createRidePromises);
+      
+      toast.success('Test rides created successfully');
+      
+      // Refresh ride offers
+      await get().getRideOffers();
+      
+      set({ loading: false });
+      
+      return true;
+    } catch (error) {
+      console.error('Error creating test rides:', error);
+      set({ 
+        loading: false,
+        error: error.message || 'Failed to create test rides'
+      });
+      toast.error('Failed to create test rides');
+      return false;
+    }
   }
 })); 

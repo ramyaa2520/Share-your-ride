@@ -51,7 +51,7 @@ import MapComponent from '../../components/map/MapComponent';
 dayjs.extend(relativeTime);
 
 const FindRide = () => {
-  const { rideOffers, getRideOffers, requestToJoinRide, loading, error } = useRideStore();
+  const { rideOffers, getRideOffers, requestToJoinRide, loading, error, createTestRides } = useRideStore();
   
   const [searchParams, setSearchParams] = useState({
     departurePlace: null,
@@ -316,11 +316,30 @@ const FindRide = () => {
     });
   };
   
+  const handleCreateTestRides = async () => {
+    try {
+      await createTestRides();
+      // After creating test rides, refresh the list
+      await getRideOffers();
+    } catch (err) {
+      console.error('Error creating test rides:', err);
+    }
+  };
+  
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-      <Typography variant="h4" gutterBottom>
-        Find a Ride
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+        <Typography variant="h4">Find a Ride</Typography>
+        
+        <Button 
+          variant="outlined" 
+          color="secondary"
+          onClick={handleCreateTestRides}
+          disabled={loading}
+        >
+          Create Test Rides
+        </Button>
+      </Stack>
       
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>

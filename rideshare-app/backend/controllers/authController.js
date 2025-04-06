@@ -30,38 +30,56 @@ const createSendToken = (user, statusCode, res) => {
 };
 
 // User registration
-exports.signup = async (req, res) => {
+exports.signup = async (req, res, next) => {
   try {
-    const {
-      name,
-      email,
-      password,
-      phoneNumber,
-      role = 'user'
-    } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    console.log('Signup request received:', req.body);
+    
+    // Clean up phone number field to avoid duplicate key errors with null/empty values
+    if (!req.body.phoneNumber || req.body.phoneNumber.trim() === '') {
+      delete req.body.phoneNumber;
+    }
+    
+    const newUser = await User.create({
+      name: req.body.name,
+      email: req.body.email,
+      password: req.body.password,
+      phoneNumber: req.body.phoneNumber,
+      role: req.body.role || 'user'
+    });
+    
+    // Remove password from output
+    newUser.password = undefined;
+    
+    // Create token
+    const token = jwt.sign(
+      { id: newUser._id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+    
+    console.log('User created successfully:', newUser._id);
+    
+    res.status(201).json({
+      status: 'success',
+      token,
+      data: {
+        user: newUser
+      }
+    });
+  } catch (err) {
+    console.error('Error in signup:', err);
+    
+    // Handle duplicate key error for phone number specifically
+    if (err.code === 11000 && err.keyPattern && err.keyPattern.phoneNumber) {
       return res.status(400).json({
-        status: 'fail',
-        message: 'Email already in use'
+        status: 'error',
+        message: 'This phone number is already registered. Please use a different phone number or leave it blank.'
       });
     }
-
-    // Create new user
-    const newUser = await User.create({
-      name,
-      email,
-      password,
-      phoneNumber,
-      role
-    });
-
-    createSendToken(newUser, 201, res);
-  } catch (err) {
-    res.status(400).json({
-      status: 'fail',
+    
+    // Handle all other errors
+    return res.status(400).json({
+      status: 'error',
       message: err.message
     });
   }

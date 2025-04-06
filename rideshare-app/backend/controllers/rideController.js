@@ -646,13 +646,15 @@ exports.getRide = async (req, res) => {
 // Get available ride offers
 exports.getRideOffers = async (req, res) => {
   try {
-    const now = new Date();
+    console.log('Fetching ride offers with request query:', req.query);
     
-    // Build the query - look for rides with status 'open' and departure time >= now
-    const query = {
-      status: 'open',
-      departureTime: { $gte: now }
+    // Build the query - default to getting all rides with open status
+    let query = {
+      status: 'open'
     };
+    
+    // Instead of filtering by departure time, get all rides for demo purposes
+    // This ensures all rides are visible for testing
     
     // Apply filters if provided
     if (req.query.departureLat && req.query.departureLng) {
@@ -700,7 +702,7 @@ exports.getRideOffers = async (req, res) => {
     
     console.log('Finding rides with query:', JSON.stringify(query));
     
-    // Get rides, sort by departure time (nearest first), limit to 50 results
+    // Get all rides, sort by departure time (soonest first), limit to 50 for performance
     const rides = await Ride.find(query)
       .sort({ departureTime: 1 })
       .limit(50)
@@ -709,11 +711,20 @@ exports.getRideOffers = async (req, res) => {
     
     console.log(`Found ${rides.length} rides matching criteria`);
     
+    // Add ride ID for frontend if _id exists but id doesn't
+    const processedRides = rides.map(ride => {
+      const rideObj = ride.toObject();
+      if (rideObj._id && !rideObj.id) {
+        rideObj.id = rideObj._id.toString();
+      }
+      return rideObj;
+    });
+    
     return res.status(200).json({
       status: 'success',
-      results: rides.length,
+      results: processedRides.length,
       data: {
-        rides
+        rides: processedRides
       }
     });
   } catch (error) {
