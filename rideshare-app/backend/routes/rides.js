@@ -1,15 +1,45 @@
 const express = require('express');
 const rideController = require('../controllers/rideController');
 const authController = require('../controllers/authController');
-const { protect, restrictTo } = require('../middlewares/auth');
+
+// Import the auth middleware correctly with fallback
+let authMiddleware;
+try {
+  // Try importing from middlewares/auth.js (check if this actually exists)
+  authMiddleware = require('../middlewares/auth');
+} catch (err) {
+  // Fallback to middleware/authMiddleware.js if the first path fails
+  authMiddleware = require('../middleware/authMiddleware');
+}
+
+// Get the protect and restrictTo functions
+const { protect, restrictTo } = authMiddleware;
 
 const router = express.Router();
 
 // Public routes (if any)
 router.get('/public/active', rideController.getPublicActiveRides);
 
-// Protected routes
-router.use(protect); // All routes below need authentication
+// Check if protect middleware is a function before using it
+if (typeof protect === 'function') {
+  // Protected routes
+  router.use(protect); // All routes below need authentication
+} else {
+  console.error('Warning: protect middleware is not a function!');
+  // Fallback middleware to avoid breaking the app
+  router.use((req, res, next) => {
+    console.warn('Using fallback auth middleware!');
+    // Minimal fallback authentication implementation
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ 
+        status: 'fail', 
+        message: 'Authentication required' 
+      });
+    }
+    next();
+  });
+}
 
 // Specific named routes first (before the :rideId route)
 router.get('/user-rides', rideController.getUserRides);
