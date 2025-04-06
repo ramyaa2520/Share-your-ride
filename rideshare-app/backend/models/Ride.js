@@ -83,7 +83,7 @@ const rideSchema = new mongoose.Schema(
       },
       currency: {
         type: String,
-        default: 'USD'
+        default: 'INR'
       },
       breakdown: {
         baseFare: {
@@ -191,6 +191,7 @@ const rideSchema = new mongoose.Schema(
 // Create indexes for geospatial queries
 rideSchema.index({ 'pickup.location': '2dsphere' });
 rideSchema.index({ 'destination.location': '2dsphere' });
+rideSchema.index({ 'requestedAt': -1 });
 
 // Populate ride with user and driver details
 rideSchema.pre(/^find/, function(next) {

@@ -237,10 +237,10 @@ const OfferRide = () => {
   };
   
   const getMapCenter = () => {
-    if (departure) {
-      return departure;
-    } else if (destination) {
-      return destination;
+    if (formData.departureLocation && formData.departureLocation.lat) {
+      return formData.departureLocation;
+    } else if (formData.destinationLocation && formData.destinationLocation.lat) {
+      return formData.destinationLocation;
     }
     return { lat: 28.6139, lng: 77.2090 }; // Default to Delhi, India
   };
@@ -292,6 +292,34 @@ const OfferRide = () => {
       return;
     }
     
+    // Calculate estimated distance between points (approximation)
+    let estimatedDistance = 10; // Default 10km
+    let estimatedDuration = 30; // Default 30 minutes
+    
+    if (formData.departureLocation && formData.departureLocation.lat && 
+        formData.destinationLocation && formData.destinationLocation.lat) {
+      try {
+        // Try to get route information for better estimates
+        const response = await fetch(
+          `https://api.locationiq.com/v1/directions/driving/` +
+          `${formData.departureLocation.lng},${formData.departureLocation.lat};` +
+          `${formData.destinationLocation.lng},${formData.destinationLocation.lat}` +
+          `?key=pk.c61dfc5608103dcf469a185a22842c95&overview=full`
+        );
+        
+        const data = await response.json();
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          // Convert from meters to kilometers
+          estimatedDistance = route.distance / 1000;
+          // Convert from seconds to minutes
+          estimatedDuration = Math.ceil(route.duration / 60);
+        }
+      } catch (error) {
+        console.error('Error estimating distance/duration:', error);
+      }
+    }
+    
     // Format the ride offer data for submission
     const offerData = {
       departureAddress: formData.departureAddress,
@@ -303,6 +331,8 @@ const OfferRide = () => {
       departureTime: formData.departureTime.toISOString(),
       availableSeats: parseInt(formData.availableSeats),
       price: parseFloat(formData.price),
+      estimatedDistance: estimatedDistance,
+      estimatedDuration: estimatedDuration,
       vehicle: {
         model: formData.vehicle.model,
         color: formData.vehicle.color,

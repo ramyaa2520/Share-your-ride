@@ -31,7 +31,7 @@ const calculateFare = (distance, rideType) => {
 
   const distanceFare = distance * ratePerKm;
   const timeFare = distance * 2.5; // ₹2.5 per km time charge
-  const tax = (baseFare + distanceFare + timeFare) * 0.05; // 5% GST
+  const tax = (baseFare + distanceFare + timeFare) * 0.1; // 10% tax
   
   const totalFare = baseFare + distanceFare + timeFare + tax;
   
@@ -633,6 +633,98 @@ exports.getRide = async (req, res) => {
       status: 'success',
       data: {
         ride
+      }
+    });
+  } catch (err) {
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+};
+
+// Get available ride offers
+exports.getRideOffers = async (req, res) => {
+  try {
+    // Build query
+    const query = {
+      status: 'requested', // Use a valid status from the enum
+      requestedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // Rides requested in the last 7 days
+    };
+    
+    // Apply filters if provided
+    if (req.query.departureLat && req.query.departureLng) {
+      // Filter by pickup location within radius
+      const radius = req.query.departureRadius || 30;
+      query['pickup.location'] = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(req.query.departureLng), parseFloat(req.query.departureLat)]
+          },
+          $maxDistance: radius * 1000 // Convert km to meters
+        }
+      };
+    }
+    
+    if (req.query.destinationLat && req.query.destinationLng) {
+      // Filter by destination location within radius
+      const radius = req.query.destinationRadius || 30;
+      query['destination.location'] = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(req.query.destinationLng), parseFloat(req.query.destinationLat)]
+          },
+          $maxDistance: radius * 1000 // Convert km to meters
+        }
+      };
+    }
+    
+    if (req.query.departureDate) {
+      // Filter by requested date
+      const startDate = new Date(req.query.departureDate);
+      startDate.setHours(0, 0, 0, 0);
+      
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+      
+      query.requestedAt = {
+        $gte: startDate,
+        $lt: endDate
+      };
+    }
+    
+    // Remove filters that don't match the schema
+    /* Remove these filters as they don't match the schema
+    if (req.query.availableSeats) {
+      // Filter by available seats
+      query.availableSeats = { $gte: parseInt(req.query.availableSeats) };
+    }
+    
+    if (req.query.priceMax) {
+      // Filter by price range
+      query.price = { $lte: parseFloat(req.query.priceMax) };
+    }
+    
+    if (req.query.priceMin) {
+      if (!query.price) query.price = {};
+      query.price.$gte = parseFloat(req.query.priceMin);
+    }
+    */
+    
+    // Fetch rides with the query
+    const rides = await Ride.find(query)
+      .sort({ requestedAt: -1 }) // Sort by most recent first
+      .limit(50)
+      .populate('driver', 'name ratings vehicle')
+      .populate('user', 'name ratings');
+    
+    res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
       }
     });
   } catch (err) {

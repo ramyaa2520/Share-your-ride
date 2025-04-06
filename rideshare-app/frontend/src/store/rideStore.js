@@ -516,44 +516,60 @@ export const useRideStore = create((set, get) => ({
       // Log the offer data for debugging
       console.log('Creating ride offer with data:', rideData);
       
-      // Ensure we have the full addresses stored
+      // Format the data for the API correctly
       const rideOfferData = {
-        ...rideData,
-        departureAddress: rideData.departure.address, // Store full address
-        destinationAddress: rideData.destination.address, // Store full address
-        price: parseFloat(rideData.price).toFixed(2)
+        pickup: {
+          address: rideData.departureAddress,
+          location: {
+            type: 'Point',
+            coordinates: [
+              rideData.departureLocation.lng,
+              rideData.departureLocation.lat
+            ]
+          }
+        },
+        destination: {
+          address: rideData.destinationAddress,
+          location: {
+            type: 'Point',
+            coordinates: [
+              rideData.destinationLocation.lng,
+              rideData.destinationLocation.lat
+            ]
+          }
+        },
+        rideType: 'economy',
+        estimatedDistance: 10, // Calculate this based on departure and destination
+        estimatedDuration: 30, // Calculate this in minutes
+        paymentMethod: 'credit_card',
+        status: 'requested',
+        departureCity: rideData.departureCity,
+        destinationCity: rideData.destinationCity,
+        departureTime: rideData.departureTime,
+        availableSeats: parseInt(rideData.availableSeats) || 1,
+        fare: {
+          estimatedFare: parseFloat(rideData.price).toFixed(2),
+          currency: 'INR'
+        },
+        vehicle: rideData.vehicle || { model: '', color: '', licensePlate: '' },
+        phoneNumber: rideData.phoneNumber || userData.phoneNumber || '',
+        notes: rideData.notes || ''
       };
       
-      // Store the new ride offer
-      const rideOffer = {
-        id: `ride-${Date.now()}`,
-        driverId: userData.id,
-        driverName: userData.name,
-        departureAddress: rideOfferData.departureAddress,
-        departureCity: rideOfferData.departureCity || '',
-        departureLocation: rideOfferData.departureLocation || { lat: 0, lng: 0 },
-        destinationAddress: rideOfferData.destinationAddress,
-        destinationCity: rideOfferData.destinationCity || '',
-        destinationLocation: rideOfferData.destinationLocation || { lat: 0, lng: 0 },
-        departureTime: rideOfferData.departureTime,
-        availableSeats: rideOfferData.availableSeats || 1,
-        price: rideOfferData.price,
-        vehicle: rideOfferData.vehicle || { model: '', color: '', licensePlate: '' },
-        phoneNumber: rideOfferData.phoneNumber || userData.phoneNumber || '',
-        notes: rideOfferData.notes || '',
-        createdAt: new Date().toISOString(),
-        joinRequests: [],
-        status: 'active'
-      };
+      // Make the API call
+      const response = await api.post('/rides', rideOfferData);
       
-      // Update state with the new ride offer
-      set(state => ({
-        ...state,
-        rideOffers: [...state.rideOffers, rideOffer]
-      }));
-      
-      toast.success('Ride offer created successfully');
-      return rideOffer;
+      if (response.data.status === 'success') {
+        set(state => ({
+          ...state,
+          rides: [response.data.data.ride, ...state.rides]
+        }));
+        
+        toast.success('Ride offer created successfully');
+        return response.data.data.ride;
+      } else {
+        throw new Error(response.data.message || 'Failed to create ride offer');
+      }
     } catch (error) {
       console.error('Error creating ride offer:', error);
       set({
@@ -562,6 +578,8 @@ export const useRideStore = create((set, get) => ({
       });
       toast.error('Failed to create ride offer');
       return null;
+    } finally {
+      set({ loading: false });
     }
   },
   

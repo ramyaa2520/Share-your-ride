@@ -31,7 +31,7 @@ const PlaceAutocomplete = ({
   variant = 'outlined',
   size = 'medium',
   city = null,
-  countryCode = 'us'
+  countryCode = 'in'
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [options, setOptions] = useState([]);
@@ -42,7 +42,7 @@ const PlaceAutocomplete = ({
     city: '',
     state: '',
     zipCode: '',
-    country: 'USA'
+    country: 'India'
   });
   
   const timeoutRef = useRef(null);
