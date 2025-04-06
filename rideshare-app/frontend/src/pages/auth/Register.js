@@ -157,7 +157,17 @@ const Register = () => {
           </Box>
           
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Alert 
+              severity="error" 
+              sx={{ mb: 3 }}
+              action={
+                error.includes('already registered') && (
+                  <Button color="inherit" size="small" component={Link} to="/login">
+                    Go to Login
+                  </Button>
+                )
+              }
+            >
               {error}
             </Alert>
           )}

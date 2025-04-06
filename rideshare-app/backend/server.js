@@ -37,13 +37,15 @@ const connectDB = async () => {
     
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     
-    // Run migration to remove unique index on phoneNumber to fix registration issues
+    // Run migrations to fix any index issues
     try {
-      console.log('Running migration to fix phoneNumber index...');
+      console.log('Running database migrations...');
       const userCollection = conn.connection.db.collection('users');
       
-      // First, check if the index exists
+      // First, check if the phoneNumber index exists and remove it if it's causing problems
       const indexes = await userCollection.indexes();
+      console.log('Current indexes:', indexes);
+      
       const phoneIndex = indexes.find(index => 
         index.key && index.key.phoneNumber === 1 && index.unique === true
       );
@@ -55,6 +57,38 @@ const connectDB = async () => {
       } else {
         console.log('No problematic phoneNumber index found, no action needed');
       }
+      
+      // Check and fix email index to ensure proper case-insensitive uniqueness
+      const emailIndexes = indexes.filter(index => index.key && index.key.email);
+      
+      // If we have multiple email indexes, clean them up
+      if (emailIndexes.length > 1) {
+        console.log('Found multiple email indexes, cleaning up...');
+        for (const index of emailIndexes) {
+          if (index.name !== '_id_') {
+            try {
+              await userCollection.dropIndex(index.name);
+              console.log(`Dropped email index: ${index.name}`);
+            } catch (indexError) {
+              console.error(`Error dropping index ${index.name}:`, indexError);
+            }
+          }
+        }
+      }
+      
+      // Create or update the email index to be case-insensitive
+      console.log('Creating case-insensitive email index...');
+      await userCollection.createIndex(
+        { email: 1 }, 
+        { 
+          unique: true, 
+          collation: { locale: 'en', strength: 2 }, // Case-insensitive
+          background: true,
+          name: 'email_unique_ci'
+        }
+      );
+      console.log('Email index updated successfully');
+      
     } catch (migrationError) {
       console.error('Error in migration:', migrationError);
       // Continue with server startup even if migration fails

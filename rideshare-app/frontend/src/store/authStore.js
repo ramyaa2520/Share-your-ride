@@ -244,6 +244,11 @@ export const useAuthStore = create((set, get) => ({
     try {
       console.log('Registration attempt with data:', userData);
       
+      // Ensure email is properly formatted before sending
+      if (userData.email) {
+        userData.email = userData.email.toLowerCase().trim();
+      }
+      
       // Ensure there's no phone number field at all in the userData
       if (userData.phoneNumber || userData.phoneCountryCode) {
         console.log('Removing phone number fields from registration data');
@@ -255,7 +260,6 @@ export const useAuthStore = create((set, get) => ({
       
       // DEVELOPMENT MODE - For testing frontend without backend
       if (isDevelopmentWithoutBackend()) {
-        // Simulate successful registration
         console.log('Development mode: Simulating successful registration');
         console.log('User data:', userData);
 
@@ -298,6 +302,11 @@ export const useAuthStore = create((set, get) => ({
 
         const { token, data } = response.data;
         
+        if (!token || !data || !data.user) {
+          console.error('Invalid response format from API:', response.data);
+          throw new Error('Invalid response received from server');
+        }
+        
         // Save token and user data to local storage
         localStorage.setItem('token', token);
         localStorage.setItem('userData', JSON.stringify(data.user));
@@ -312,11 +321,18 @@ export const useAuthStore = create((set, get) => ({
         toast.success('Registration successful');
         return true;
       } catch (apiError) {
-        console.error('API Error:', apiError);
+        console.error('API Error during registration:', apiError);
         
-        // Handle MongoDB duplicate key error (code 11000)
+        if (apiError.response) {
+          console.error('API Error response:', {
+            status: apiError.response.status,
+            data: apiError.response.data
+          });
+        }
+        
+        // Handle duplicate email errors
         if (apiError.response?.data?.message?.includes('already registered') || 
-            apiError.response?.status === 400) {
+            (apiError.response?.status === 400 && apiError.response?.data?.message?.includes('Email'))) {
           const errorMessage = apiError.response?.data?.message || 'Email is already registered';
           set({
             loading: false,
@@ -326,7 +342,28 @@ export const useAuthStore = create((set, get) => ({
           return false;
         }
         
-        // Handle other API errors
+        // Handle other validation errors
+        if (apiError.response?.status === 400) {
+          const errorMessage = apiError.response?.data?.message || 'Validation failed';
+          set({
+            loading: false,
+            error: errorMessage
+          });
+          toast.error(errorMessage);
+          return false;
+        }
+        
+        // Handle server errors
+        if (apiError.response?.status >= 500) {
+          set({
+            loading: false,
+            error: 'Server error occurred. Please try again later.'
+          });
+          toast.error('Server error occurred. Please try again later.');
+          return false;
+        }
+        
+        // For other API errors, use the general handler
         throw apiError;
       }
     } catch (error) {

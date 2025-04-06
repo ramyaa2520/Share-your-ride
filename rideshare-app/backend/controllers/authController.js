@@ -34,62 +34,86 @@ exports.signup = async (req, res) => {
   try {
     console.log('Signup attempt with data:', JSON.stringify(req.body));
     
-    // Check if user with email already exists before attempting to create
-    const { email } = req.body;
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    // Extract fields from request
+    const { name, email, password } = req.body;
     
-    if (existingUser) {
+    if (!email) {
       return res.status(400).json({
         status: 'fail',
-        message: 'Email is already registered. Please use a different email or login instead.'
+        message: 'Email is required'
       });
     }
     
-    // Extract only the fields needed for user creation
-    const { name, password } = req.body;
+    // Normalize the email (lowercase and trim)
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log('Checking for existing user with email:', normalizedEmail);
     
-    // Create a new user with only required fields
-    const newUser = await User.create({
-      name,
-      email: email.toLowerCase().trim(),
-      password
-    });
+    try {
+      // Check if user with email already exists before attempting to create
+      const existingUser = await User.findOne({ email: normalizedEmail });
+      console.log('Existing user lookup result:', existingUser ? 'Found' : 'Not found');
+      
+      if (existingUser) {
+        console.log('User with this email already exists:', existingUser._id);
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Email is already registered. Please use a different email or login instead.'
+        });
+      }
+      
+      // If we get here, the email is not registered
+      console.log('Email is available, creating new user');
+      
+      // Create a new user with required fields
+      const newUser = await User.create({
+        name,
+        email: normalizedEmail,
+        password
+      });
+      
+      console.log('User created successfully with ID:', newUser._id);
 
-    // Create a token for the newly registered user
-    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET || JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN,
-    });
+      // Create a token for the newly registered user
+      const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET || JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN,
+      });
 
-    // Remove password from output
-    newUser.password = undefined;
+      // Remove password from output
+      newUser.password = undefined;
 
-    res.status(201).json({
-      status: 'success',
-      token,
-      data: {
-        user: newUser,
-      },
-    });
+      res.status(201).json({
+        status: 'success',
+        token,
+        data: {
+          user: newUser,
+        },
+      });
+    } catch (dbError) {
+      console.error('Database operation error:', dbError);
+      
+      // Handle validation errors
+      if (dbError.name === 'ValidationError') {
+        const messages = Object.values(dbError.errors).map(val => val.message);
+        return res.status(400).json({
+          status: 'fail',
+          message: messages.join(', ')
+        });
+      }
+      
+      // Handle duplicate email error (MongoDB error code 11000)
+      if (dbError.code === 11000) {
+        console.error('Duplicate key error:', dbError.keyValue);
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Email is already registered. Please use a different email or login instead.'
+        });
+      }
+      
+      // For other database errors, throw to be caught by outer catch
+      throw dbError;
+    }
   } catch (err) {
     console.error('Signup error:', err);
-    
-    // Handle validation errors
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map(val => val.message);
-      return res.status(400).json({
-        status: 'fail',
-        message: messages.join(', ')
-      });
-    }
-    
-    // Handle duplicate email error
-    if (err.code === 11000) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Email is already registered. Please use a different email or login instead.'
-      });
-    }
-
     res.status(500).json({
       status: 'error',
       message: 'Error creating user account. Please try again later.'
