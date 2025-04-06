@@ -97,8 +97,8 @@ const Register = () => {
     
     if (!formData.password) {
       errors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      errors.password = 'Password must be at least 6 characters';
+    } else if (formData.password.length < 8) {
+      errors.password = 'Password must be at least 8 characters';
     }
     
     if (formData.password !== formData.confirmPassword) {
@@ -123,10 +123,10 @@ const Register = () => {
     
     clearError();
     
-    // Only include name, email and password
+    // Only include the required fields for registration
     const userData = {
       name: formData.name,
-      email: formData.email,
+      email: formData.email.toLowerCase().trim(),
       password: formData.password
     };
     
@@ -181,6 +181,7 @@ const Register = () => {
                       </InputAdornment>
                     ),
                   }}
+                  disabled={loading}
                 />
               </Grid>
               
@@ -202,6 +203,7 @@ const Register = () => {
                       </InputAdornment>
                     ),
                   }}
+                  disabled={loading}
                 />
               </Grid>
               
@@ -228,12 +230,14 @@ const Register = () => {
                           aria-label="toggle password visibility"
                           onClick={() => setShowPassword(!showPassword)}
                           edge="end"
+                          disabled={loading}
                         >
                           {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                         </IconButton>
                       </InputAdornment>
                     )
                   }}
+                  disabled={loading}
                 />
               </Grid>
               
@@ -260,12 +264,14 @@ const Register = () => {
                           aria-label="toggle password visibility"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                           edge="end"
+                          disabled={loading}
                         >
                           {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                         </IconButton>
                       </InputAdornment>
                     )
                   }}
+                  disabled={loading}
                 />
               </Grid>
               
@@ -277,6 +283,7 @@ const Register = () => {
                       checked={formData.agreeToTerms}
                       onChange={handleChange}
                       color="primary"
+                      disabled={loading}
                     />
                   }
                   label="I agree to the terms and conditions"

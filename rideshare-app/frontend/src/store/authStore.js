@@ -292,24 +292,43 @@ export const useAuthStore = create((set, get) => ({
       console.log('Sending registration request to API server:', `${API_URL}/auth/signup`);
       console.log('Registration payload:', JSON.stringify(userData));
       
-      const response = await api.post('/auth/signup', userData);
-      console.log('Registration response:', response.data);
+      try {
+        const response = await api.post('/auth/signup', userData);
+        console.log('Registration response:', response.data);
 
-      const { token, data } = response.data;
-      
-      // Save token to local storage
-      localStorage.setItem('token', token);
-      localStorage.setItem('userData', JSON.stringify(data.user));
-      
-      set({
-        user: data.user,
-        isAuthenticated: true,
-        loading: false,
-        error: null
-      });
+        const { token, data } = response.data;
+        
+        // Save token and user data to local storage
+        localStorage.setItem('token', token);
+        localStorage.setItem('userData', JSON.stringify(data.user));
+        
+        set({
+          user: data.user,
+          isAuthenticated: true,
+          loading: false,
+          error: null
+        });
 
-      toast.success('Registration successful');
-      return true;
+        toast.success('Registration successful');
+        return true;
+      } catch (apiError) {
+        console.error('API Error:', apiError);
+        
+        // Handle MongoDB duplicate key error (code 11000)
+        if (apiError.response?.data?.message?.includes('already registered') || 
+            apiError.response?.status === 400) {
+          const errorMessage = apiError.response?.data?.message || 'Email is already registered';
+          set({
+            loading: false,
+            error: errorMessage
+          });
+          toast.error(errorMessage);
+          return false;
+        }
+        
+        // Handle other API errors
+        throw apiError;
+      }
     } catch (error) {
       console.error('Registration failed:', error);
       console.error('Error details:', {

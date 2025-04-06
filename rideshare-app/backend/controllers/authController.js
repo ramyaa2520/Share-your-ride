@@ -34,19 +34,30 @@ exports.signup = async (req, res) => {
   try {
     console.log('Signup attempt with data:', JSON.stringify(req.body));
     
+    // Check if user with email already exists before attempting to create
+    const { email } = req.body;
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    
+    if (existingUser) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Email is already registered. Please use a different email or login instead.'
+      });
+    }
+    
     // Extract only the fields needed for user creation
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
     
     // Create a new user with only required fields
     const newUser = await User.create({
       name,
-      email,
+      email: email.toLowerCase().trim(),
       password
     });
 
     // Create a token for the newly registered user
-    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN,
+    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET || JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN,
     });
 
     // Remove password from output
