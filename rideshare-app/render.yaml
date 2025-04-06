@@ -2,6 +2,7 @@ services:
   - type: web
     name: rideshare-backend
     runtime: docker
+    rootDir: rideshare-app
     plan: free
     healthCheckPath: /
     envVars:
