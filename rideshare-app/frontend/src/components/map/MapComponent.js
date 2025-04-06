@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
-import 'leaflet/dist/leaflet.css';
+// Replace the CSS import with inline CSS that will be included during build
+// import 'leaflet/dist/leaflet.css';
 
 // LocationIQ API key
 const API_KEY = 'pk.c61dfc5608103dcf469a185a22842c95';
@@ -34,7 +35,10 @@ const MapComponent = ({
         if (!window.L) {
           // Use dynamic import to load leaflet
           const L = await import('leaflet');
-          window.L = L.default;
+          window.L = L.default || L;
+          
+          // Also import the CSS
+          await import('leaflet/dist/leaflet.css');
           
           // Fix Leaflet's default icon paths
           delete window.L.Icon.Default.prototype._getIconUrl;
