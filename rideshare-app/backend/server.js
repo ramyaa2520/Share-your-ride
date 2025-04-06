@@ -13,7 +13,7 @@ const app = express();
 // Middleware
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://rideshare-frontend.vercel.app', 'https://rideshare-app.vercel.app'] 
+    ? ['https://rideshare-frontend.vercel.app', 'https://rideshare-app.vercel.app', 'https://shareride-ten.vercel.app'] 
     : 'http://localhost:3000',
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true,
