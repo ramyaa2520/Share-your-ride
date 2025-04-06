@@ -67,20 +67,24 @@ const connectDB = async () => {
       console.log('Current indexes:', JSON.stringify(indexes, null, 2));
       
       // Clean up any problematic indexes
-      // 1. Check for phoneNumber unique index which might be causing issues
-      const phoneIndex = indexes.find(index => 
-        index.key && index.key.phoneNumber === 1 && index.unique === true
-      );
-      
-      if (phoneIndex) {
-        console.log('Found problematic phoneNumber index, dropping it...');
-        await userCollection.dropIndex('phoneNumber_1');
-        console.log('Successfully dropped phoneNumber index');
+      // NOTE: The error shows 'phone_number' but model uses 'phoneNumber'
+      // Check for both versions of phone number indexes
+      for (const index of indexes) {
+        // Check for any phone-related index with uniqueness
+        if ((index.key && (index.key.phoneNumber === 1 || index.key.phone_number === 1)) && index.unique === true) {
+          console.log(`Found problematic phone number index: ${index.name}, dropping it...`);
+          try {
+            await userCollection.dropIndex(index.name);
+            console.log(`Successfully dropped phone number index: ${index.name}`);
+          } catch (indexError) {
+            console.error(`Error dropping index ${index.name}:`, indexError);
+          }
+        }
       }
 
       // 2. Find email indexes
       const emailIndexes = indexes.filter(index => 
-        index.key && index.key.email && index.name !== '_id_'
+        index.key && (index.key.email === 1) && index.name !== '_id_'
       );
       
       // 3. Set up proper email index (drop any existing ones first)

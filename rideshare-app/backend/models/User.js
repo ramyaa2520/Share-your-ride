@@ -40,7 +40,8 @@ const userSchema = new mongoose.Schema(
           return true; // Accept any value for now to avoid registration issues
         },
         message: 'Invalid phone number format'
-      }
+      },
+      sparse: true // This allows multiple documents with null/undefined values
     },
     role: {
       type: String,

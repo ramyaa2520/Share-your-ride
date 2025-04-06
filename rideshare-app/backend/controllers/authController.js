@@ -59,15 +59,24 @@ exports.signup = async (req, res) => {
     console.log('Processing registration for email:', normalizedEmail);
     
     try {
-      // SIMPLIFIED: Just try to create the user directly and handle any duplicate key errors
-      // This relies on MongoDB's built-in uniqueness constraint
+      // Check if there's an existing user with this email first to provide a clearer error
+      const existingUser = await User.findOne({ email: normalizedEmail });
+      if (existingUser) {
+        console.log('Email already registered:', normalizedEmail);
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Email is already registered. Please use a different email or login instead.'
+        });
+      }
+      
       console.log('Creating new user with email:', normalizedEmail);
       
-      // Create a new user directly
+      // Create a new user directly, explicitly setting phoneNumber to undefined to avoid null duplicates
       const newUser = await User.create({
         name: name.trim(),
         email: normalizedEmail,
-        password: password // Will be hashed by the model's pre-save hook
+        password: password, // Will be hashed by the model's pre-save hook
+        phoneNumber: undefined // Explicitly avoid using null to prevent duplicate key issues
       });
       
       console.log('User created successfully with ID:', newUser._id);
@@ -105,9 +114,47 @@ exports.signup = async (req, res) => {
         });
       }
       
-      // Handle duplicate email error (MongoDB error code 11000)
+      // Handle duplicate key error (MongoDB error code 11000)
       if (dbError.code === 11000) {
         console.error('Duplicate key error detected, keyValue:', dbError.keyValue);
+        
+        // Check if it's a phone_number/phoneNumber duplication
+        if (dbError.keyValue && (dbError.keyValue.phone_number !== undefined || dbError.keyValue.phoneNumber !== undefined)) {
+          console.log('Attempting registration without phone number due to duplicate null issue');
+          
+          // Try again with an explicit empty string phoneNumber which will avoid the null duplicate issue
+          try {
+            const secondAttemptUser = await User.create({
+              name: name.trim(),
+              email: normalizedEmail,
+              password: password,
+              phoneNumber: "" // Empty string instead of null/undefined
+            });
+            
+            console.log('Second attempt succeeded, user created with ID:', secondAttemptUser._id);
+            
+            // Create a token for the newly registered user
+            const token = jwt.sign({ id: secondAttemptUser._id }, process.env.JWT_SECRET || JWT_SECRET, {
+              expiresIn: process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN,
+            });
+            
+            // Remove password from output
+            secondAttemptUser.password = undefined;
+            
+            // Send successful response
+            return res.status(201).json({
+              status: 'success',
+              token,
+              data: {
+                user: secondAttemptUser,
+              },
+            });
+          } catch (retryError) {
+            console.error('Second attempt failed:', retryError);
+            // Fall through to the generic error message below
+          }
+        }
+        
         return res.status(400).json({
           status: 'fail',
           message: 'Email is already registered. Please use a different email or login instead.'
