@@ -14,7 +14,11 @@ const app = express();
 const corsOptions = {
   origin: function(origin, callback) {
     const allowedOrigins = [
-      'https://shareride-ten.vercel.app'
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://shareride-ten.vercel.app',
+      'https://rideshare-frontend.vercel.app',
+      'https://rideshare-app.vercel.app'
     ];
     // Allow requests with no origin (like mobile apps, curl requests)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -36,7 +40,7 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 // MongoDB Connection
-const MONGODB_URI = 'mongodb+srv://Riddeshare:Riddeshare@rideshare.c8ijbtr.mongodb.net/?retryWrites=true&w=majority&appName=rideshare';
+const MONGODB_URI = 'mongodb+srv://Riddeshare:Riddeshare@rideshare.c8ijbtr.mongodb.net/rideshareDB?retryWrites=true&w=majority&appName=rideshare';
 
 // Connection to MongoDB
 const connectDB = async () => {
@@ -44,21 +48,26 @@ const connectDB = async () => {
     console.log('Connecting to MongoDB...');
     const conn = await mongoose.connect(process.env.MONGODB_URI || MONGODB_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds timeout for server selection
+      socketTimeoutMS: 45000, // 45 seconds timeout for socket operations
+      family: 4 // Force IPv4
     });
     
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`Database: ${conn.connection.name}`);
     
     // Run migrations to fix any index issues
     try {
-      console.log('Running database migrations...');
+      console.log('Setting up MongoDB indexes...');
       const userCollection = conn.connection.db.collection('users');
       
       // Get existing indexes for diagnostics
       const indexes = await userCollection.indexes();
       console.log('Current indexes:', JSON.stringify(indexes, null, 2));
       
-      // First, check if the phoneNumber index exists and remove it if it's causing problems
+      // Clean up any problematic indexes
+      // 1. Check for phoneNumber unique index which might be causing issues
       const phoneIndex = indexes.find(index => 
         index.key && index.key.phoneNumber === 1 && index.unique === true
       );
@@ -67,82 +76,42 @@ const connectDB = async () => {
         console.log('Found problematic phoneNumber index, dropping it...');
         await userCollection.dropIndex('phoneNumber_1');
         console.log('Successfully dropped phoneNumber index');
-      } else {
-        console.log('No problematic phoneNumber index found, no action needed');
       }
-      
-      // IMPORTANT: Fix email uniqueness indexes
-      console.log('Fixing email uniqueness indexes...');
-      
-      // First, drop ALL existing email indexes to ensure clean state
+
+      // 2. Find email indexes
       const emailIndexes = indexes.filter(index => 
         index.key && index.key.email && index.name !== '_id_'
       );
       
-      console.log(`Found ${emailIndexes.length} email indexes`);
-      
-      // Drop all existing email indexes to avoid conflicts
+      // 3. Set up proper email index (drop any existing ones first)
       if (emailIndexes.length > 0) {
-        console.log('Dropping existing email indexes to recreate with proper settings...');
+        console.log(`Found ${emailIndexes.length} email indexes. Recreating for consistency...`);
         
         for (const index of emailIndexes) {
           try {
             console.log(`Dropping email index: ${index.name}`);
             await userCollection.dropIndex(index.name);
-            console.log(`Successfully dropped email index: ${index.name}`);
-          } catch (indexError) {
-            console.error(`Error dropping index ${index.name}:`, indexError);
+          } catch (error) {
+            console.log(`Error dropping index (may be harmless): ${error.message}`);
           }
         }
       }
       
-      // Create a new, proper case-insensitive unique email index
-      try {
-        console.log('Creating case-insensitive email index...');
-        await userCollection.createIndex(
-          { email: 1 }, 
-          { 
-            unique: true, 
-            collation: { locale: 'en', strength: 2 }, // Case-insensitive
-            background: true,
-            name: 'email_unique_ci'
-          }
-        );
-        console.log('Email index created successfully');
-        
-        // Check for duplicate emails that might cause issues
-        const duplicateEmails = await userCollection.aggregate([
-          { $group: { _id: { email: { $toLower: "$email" } }, count: { $sum: 1 }, ids: { $push: "$_id" } } },
-          { $match: { count: { $gt: 1 } } }
-        ]).toArray();
-        
-        if (duplicateEmails.length > 0) {
-          console.warn('WARNING: Found duplicate emails (case-insensitive) that may cause issues:');
-          duplicateEmails.forEach(dup => {
-            console.warn(`  Email: ${dup._id.email}, Count: ${dup.count}, IDs: ${dup.ids.join(', ')}`);
-          });
-        } else {
-          console.log('No duplicate emails found. Email uniqueness should work correctly.');
+      // Create a single case-insensitive email index
+      await userCollection.createIndex(
+        { email: 1 }, 
+        { 
+          unique: true, 
+          collation: { locale: 'en', strength: 2 }, // Case-insensitive
+          background: true,
+          name: 'email_unique_ci'
         }
-        
-        // Verify the index was created properly
-        const updatedIndexes = await userCollection.indexes();
-        const newEmailIndex = updatedIndexes.find(index => index.name === 'email_unique_ci');
-        
-        if (newEmailIndex) {
-          console.log('Email index verified:', JSON.stringify(newEmailIndex, null, 2));
-        } else {
-          console.error('Email index creation was not verified! Check database manually.');
-        }
-      } catch (indexCreateError) {
-        console.error('Error creating email index:', indexCreateError);
-        
-        // If we can't create the index because of duplicate values, we need to handle this
-        if (indexCreateError.code === 11000) {
-          console.error('Duplicate email values detected in the database. Index cannot be created.');
-          console.error('Please clean up duplicate email entries manually before running again.');
-        }
-      }
+      );
+      console.log('Email index created/updated successfully');
+      
+      // Verify final indexes
+      const finalIndexes = await userCollection.indexes();
+      console.log('Final indexes configuration:', JSON.stringify(finalIndexes, null, 2));
       
     } catch (migrationError) {
       console.error('Error in database migration:', migrationError);
@@ -171,6 +140,49 @@ app.use('/api/drivers', driverRoutes);
 // Root route
 app.get('/', (req, res) => {
   res.send('RideShare API is running');
+});
+
+// Database health check route
+app.get('/api/health', async (req, res) => {
+  try {
+    // Check MongoDB connection
+    const dbState = mongoose.connection.readyState;
+    const dbStatus = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    
+    // Get some stats about the database
+    let userCount = 0;
+    try {
+      userCount = await mongoose.connection.db.collection('users').countDocuments();
+    } catch (err) {
+      console.error('Error counting users:', err);
+    }
+    
+    res.json({
+      status: 'success',
+      db: {
+        state: dbStatus[dbState],
+        host: mongoose.connection.host,
+        name: mongoose.connection.name,
+        userCount
+      },
+      api: {
+        version: '1.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      }
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database health check failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 });
 
 // Error handling middleware

@@ -56,43 +56,14 @@ exports.signup = async (req, res) => {
     
     // Normalize the email (lowercase and trim)
     const normalizedEmail = email.toLowerCase().trim();
-    console.log('Checking for existing user with email:', normalizedEmail);
+    console.log('Processing registration for email:', normalizedEmail);
     
     try {
-      // Use a direct find with case-insensitive collation instead of regex
-      // This is more efficient and reliable for email uniqueness checks
-      const existingUser = await User.findOne({ email: normalizedEmail })
-        .collation({ locale: 'en', strength: 2 });
+      // SIMPLIFIED: Just try to create the user directly and handle any duplicate key errors
+      // This relies on MongoDB's built-in uniqueness constraint
+      console.log('Creating new user with email:', normalizedEmail);
       
-      console.log('Existing user lookup result:', existingUser ? 'Found' : 'Not found');
-      
-      if (existingUser) {
-        console.log('User with this email already exists:', existingUser._id);
-        return res.status(400).json({
-          status: 'fail',
-          message: 'Email is already registered. Please use a different email or login instead.'
-        });
-      }
-      
-      // Check if there are any users with very similar emails (different case)
-      // This is a double-check to avoid case sensitivity issues
-      const similarEmailUsers = await User.find({
-        email: { $regex: new RegExp('^' + normalizedEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') }
-      });
-      
-      if (similarEmailUsers && similarEmailUsers.length > 0) {
-        console.log('Found users with similar email (different case):', 
-          similarEmailUsers.map(u => u.email));
-        return res.status(400).json({
-          status: 'fail',
-          message: 'Email is already registered. Please use a different email or login instead.'
-        });
-      }
-      
-      // If we get here, the email is not registered
-      console.log('Email is available, creating new user');
-      
-      // Create a new user with required fields
+      // Create a new user directly
       const newUser = await User.create({
         name: name.trim(),
         email: normalizedEmail,
@@ -118,7 +89,12 @@ exports.signup = async (req, res) => {
         },
       });
     } catch (dbError) {
-      console.error('Database operation error:', dbError);
+      console.error('Database operation error details:', {
+        name: dbError.name,
+        code: dbError.code,
+        message: dbError.message,
+        keyValue: dbError.keyValue
+      });
       
       // Handle validation errors
       if (dbError.name === 'ValidationError') {
@@ -131,7 +107,7 @@ exports.signup = async (req, res) => {
       
       // Handle duplicate email error (MongoDB error code 11000)
       if (dbError.code === 11000) {
-        console.error('Duplicate key error:', dbError.keyValue);
+        console.error('Duplicate key error detected, keyValue:', dbError.keyValue);
         return res.status(400).json({
           status: 'fail',
           message: 'Email is already registered. Please use a different email or login instead.'

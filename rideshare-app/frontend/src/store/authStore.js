@@ -340,6 +340,9 @@ export const useAuthStore = create((set, get) => ({
       console.log('Sending registration request to backend:', `${API_URL}/auth/signup`);
       console.log('Registration payload:', JSON.stringify(formattedUserData));
       
+      // Clear any previous errors
+      set({ error: null });
+
       try {
         // Try to register the user with the backend
         const response = await api.post('/auth/signup', formattedUserData);
@@ -376,7 +379,7 @@ export const useAuthStore = create((set, get) => ({
         });
 
         // Show success message
-        toast.success('Registration successful');
+        toast.success('Registration successful! Welcome aboard!');
         return true;
       } catch (apiError) {
         // Handle API errors specifically
@@ -386,100 +389,45 @@ export const useAuthStore = create((set, get) => ({
           console.error('API Error response details:', {
             status: apiError.response.status,
             statusText: apiError.response.statusText,
-            data: JSON.stringify(apiError.response.data)
+            data: JSON.stringify(apiError.response.data, null, 2)
           });
         }
         
-        // Handle duplicate email errors
-        if (
-          (apiError.response?.data?.message && 
-           typeof apiError.response.data.message === 'string' &&
-           (apiError.response.data.message.toLowerCase().includes('already registered') || 
-            apiError.response.data.message.toLowerCase().includes('email is already') ||
-            apiError.response.data.message.toLowerCase().includes('email already'))) || 
-          (apiError.response?.status === 400 && 
-           apiError.response?.data?.status === 'fail' && 
-           apiError.response?.data?.message && 
-           typeof apiError.response.data.message === 'string' &&
-           apiError.response.data.message.toLowerCase().includes('email'))
-        ) {
-          const errorMessage = 'This email address is already registered. Please use a different email or sign in to your existing account.';
-          
-          // Log the detected duplicate email error
-          console.log('Duplicate email detected:', formattedUserData.email);
-          console.log('Original error message:', apiError.response?.data?.message);
-          
-          set({
-            loading: false,
-            error: errorMessage
-          });
-          
-          toast.error(errorMessage);
-          return false;
-        }
+        // Extract the error message from the response
+        let errorMessage = 'Registration failed. Please try again.';
         
-        // Handle validation errors
-        if (apiError.response?.status === 400) {
-          let errorMessage = apiError.response?.data?.message || 
-            'Validation failed. Please check your input and try again.';
-          
-          // Use response.data directly if message is not available
-          if (!errorMessage && apiError.response.data) {
-            if (typeof apiError.response.data === 'string') {
-              errorMessage = apiError.response.data;
-            } else if (typeof apiError.response.data === 'object') {
-              errorMessage = JSON.stringify(apiError.response.data);
-            }
+        if (apiError.response?.data) {
+          if (typeof apiError.response.data.message === 'string') {
+            errorMessage = apiError.response.data.message;
+          } else if (typeof apiError.response.data === 'string') {
+            errorMessage = apiError.response.data;
+          } else if (apiError.response.data.error) {
+            errorMessage = apiError.response.data.error;
           }
-          
-          set({
-            loading: false,
-            error: errorMessage
-          });
-          
-          toast.error(errorMessage);
-          return false;
-        }
-        
-        // Handle server errors
-        if (apiError.response?.status >= 500) {
-          set({
-            loading: false,
-            error: 'Server error occurred. Please try again later.'
-          });
-          
-          toast.error('Server error occurred. Please try again later.');
-          return false;
-        }
-        
-        // For connection issues
-        if (!apiError.response) {
-          const errorMessage = 'Could not connect to the server. Please check your internet connection and try again.';
-          
-          set({
-            loading: false,
-            error: errorMessage
-          });
-          
-          toast.error('Connection failed. Please check your internet connection.');
-          return false;
-        }
-        
-        // Default error handling for unhandled cases
-        let errorMessage = 'Registration failed';
-        
-        if (apiError.response?.data?.message) {
-          errorMessage = typeof apiError.response.data.message === 'string' ? 
-            apiError.response.data.message : JSON.stringify(apiError.response.data.message);
         } else if (apiError.message) {
           errorMessage = apiError.message;
         }
         
+        // Check if it's a duplicate email error
+        const isDuplicateEmail = 
+          (errorMessage.toLowerCase().includes('email') && 
+           (errorMessage.toLowerCase().includes('already') || 
+            errorMessage.toLowerCase().includes('duplicate') || 
+            errorMessage.toLowerCase().includes('registered'))) ||
+          (apiError.response?.status === 400 && apiError.response?.data?.status === 'fail');
+        
+        if (isDuplicateEmail) {
+          errorMessage = 'This email address is already registered. Please use a different email or sign in to your existing account.';
+          console.log('Duplicate email detected:', formattedUserData.email);
+        }
+        
+        // Update state with error
         set({
           loading: false,
           error: errorMessage
         });
         
+        // Show error toast
         toast.error(errorMessage);
         return false;
       }
