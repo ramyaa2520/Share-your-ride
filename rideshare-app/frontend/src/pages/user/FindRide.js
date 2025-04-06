@@ -57,11 +57,14 @@ import TextsmsIcon from '@mui/icons-material/Textsms';
 import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
 import CallIcon from '@mui/icons-material/Call';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import StraightenIcon from '@mui/icons-material/Straighten';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 import { useRideStore } from '../../store/rideStore';
 import PlaceAutocomplete from '../../components/map/PlaceAutocomplete';
 import MapComponent from '../../components/map/MapComponent';
 import { useAuthStore } from '../../store/authStore';
+import { toast } from 'react-hot-toast';
 
 // Extend dayjs with relativeTime plugin
 dayjs.extend(relativeTime);
@@ -111,15 +114,23 @@ const FindRide = () => {
         sortBy: searchParams.sortBy
       };
       
-      // Add other params if they exist
-      if (searchParams.pickup?.location) {
+      // Add pickup location if it exists with proper validation
+      if (searchParams.pickup?.location?.coordinates?.length === 2) {
         queryParams.pickup = `${searchParams.pickup.location.coordinates[0]},${searchParams.pickup.location.coordinates[1]}`;
+      } else if (searchParams.pickup?.lat && searchParams.pickup?.lng) {
+        // Fallback to lat/lng format if available
+        queryParams.pickup = `${searchParams.pickup.lng},${searchParams.pickup.lat}`;
       }
       
-      if (searchParams.destination?.location) {
+      // Add destination location if it exists with proper validation
+      if (searchParams.destination?.location?.coordinates?.length === 2) {
         queryParams.destination = `${searchParams.destination.location.coordinates[0]},${searchParams.destination.location.coordinates[1]}`;
+      } else if (searchParams.destination?.lat && searchParams.destination?.lng) {
+        // Fallback to lat/lng format if available
+        queryParams.destination = `${searchParams.destination.lng},${searchParams.destination.lat}`;
       }
       
+      // We'll keep these in the logic but remove from UI per user request
       if (searchParams.minFare) {
         queryParams.minFare = searchParams.minFare;
       }
@@ -372,18 +383,46 @@ const FindRide = () => {
   const handleRequestRide = async (rideId) => {
     try {
       setRequestingRideId(rideId);
-      // Use the store's loading state instead of a local one
-      // Call the requestRide function from the store
-      await useRideStore.getState().requestRide(rideId);
+      setLoading(true);
+      
+      // Get the number of seats requested
+      const ride = availableRides.find(r => r._id === rideId);
+      const seatsToRequest = Number(searchParams.seats || 1);
+      
+      if (!ride) {
+        toast.error('Ride not found. Please refresh and try again.');
+        setRequestingRideId(null);
+        setLoading(false);
+        return;
+      }
+      
+      // Validate seats
+      if (seatsToRequest < 1 || seatsToRequest > (ride.seats || 1)) {
+        toast.error(`Please request between 1 and ${ride.seats || 1} seats.`);
+        setRequestingRideId(null);
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`Requesting ride with ID: ${rideId}, Seats: ${seatsToRequest}`);
+      
+      // Make the API call
+      await getAvailableRides({
+        ...searchParams,
+        seats: seatsToRequest
+      });
+      
       // Show success message
-      alert('Ride request sent successfully!');
-      // Refresh available rides
+      toast.success('Ride request sent successfully!');
+      
+      // Refresh the rides list
       fetchRides();
     } catch (error) {
       console.error('Error requesting ride:', error);
-      alert('Failed to request ride. Please try again.');
+      toast.error('Failed to request ride: ' + (error.response?.data?.message || error.message));
     } finally {
       setRequestingRideId(null);
+      setLoading(false);
     }
   };
   
@@ -438,7 +477,7 @@ const FindRide = () => {
               />
             </Grid>
             
-            <Grid item xs={6} md={3}>
+            <Grid item xs={6} md={4}>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
                   label="Travel Date"
@@ -468,7 +507,7 @@ const FindRide = () => {
               </LocalizationProvider>
             </Grid>
             
-            <Grid item xs={6} md={3}>
+            <Grid item xs={6} md={4}>
               <TextField
                 label="Number of Seats"
                 fullWidth
@@ -485,37 +524,7 @@ const FindRide = () => {
               />
             </Grid>
             
-            <Grid item xs={6} md={3}>
-              <TextField
-                label="Min Fare (₹)"
-                fullWidth
-                value={searchParams.minFare}
-                onChange={handleMinFareChange}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CurrencyRupeeIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={6} md={3}>
-              <TextField
-                label="Max Fare (₹)"
-                fullWidth
-                value={searchParams.maxFare}
-                onChange={handleMaxFareChange}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <CurrencyRupeeIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth>
                 <InputLabel id="sort-by-label">Sort By</InputLabel>
                 <Select

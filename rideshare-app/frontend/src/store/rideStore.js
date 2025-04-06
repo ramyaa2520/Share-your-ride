@@ -261,71 +261,83 @@ export const useRideStore = create((set, get) => ({
     }
   },
 
-  // Request a ride
-  requestRide: async (rideId) => {
+  // Request to join a ride
+  requestRide: async (rideId, seats = 1) => {
     try {
-      set({ requesting: true, error: null });
-      console.log(`Requesting ride: ${rideId}`);
+      setLoading(true);
+      setError(null);
       
-      // For development without backend
-      if (isDevelopmentWithoutBackend()) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const userData = JSON.parse(localStorage.getItem('userData'));
-        
-        // Get the ride from the current rides
-        const ride = get().rides.find(r => r._id === rideId || r.id === rideId);
-        
-        if (!ride) {
-          throw new Error('Ride not found');
-        }
-        
-        // Create request
-        const request = {
-          id: generateId(),
-          rideId: ride._id || ride.id,
-          userId: userData?.id,
-          status: 'pending',
-          requestedAt: new Date().toISOString()
-        };
-        
-        // Update my requested rides
-        set(state => ({
-          myRequestedRides: [...state.myRequestedRides, {
-            ...request,
-            ride
-          }],
-          requesting: false
-        }));
-        
-        toast.success('Ride request sent successfully!');
-        return request;
+      console.log(`Requesting ride ${rideId} for ${seats} seats`);
+      
+      // Validate the ride exists
+      const ride = rides.find(r => r._id === rideId);
+      if (!ride) {
+        console.error('Ride not found in store:', rideId);
+        toast.error('Ride not found. Please refresh and try again.');
+        setLoading(false);
+        return;
       }
       
-      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-      const requestData = {
-        seats: 1,  // Default to 1 seat
-        message: 'I would like to join this ride',
-        phoneNumber: userData.phoneNumber || ''
-      };
+      // Validate seats
+      if (!seats || seats < 1 || (ride.availableSeats && seats > ride.availableSeats)) {
+        toast.error(`Please request between 1 and ${ride.availableSeats || 1} seats.`);
+        setLoading(false);
+        return;
+      }
       
-      const response = await api.post(`/rides/${rideId}/request`, requestData);
+      // Check if user has already requested this ride
+      const userRequested = ride.requests?.some(req => req.passenger?._id === user?._id);
+      if (userRequested) {
+        toast.info('You have already requested this ride.');
+        setLoading(false);
+        return;
+      }
       
-      if (response.data.status === 'success') {
-        set({ requesting: false });
+      // Make the request
+      const response = await api.post(`/rides/${rideId}/request`, { seats });
+      
+      console.log('Ride request response:', response.data);
+      
+      if (response.data.status === 'success' || response.data.success) {
+        // Update the ride in the store
+        setRides(rides.map(r => {
+          if (r._id === rideId) {
+            // Add user's request to the ride
+            const newRequest = {
+              _id: response.data.requestId || generateId(),
+              passenger: { _id: user?._id, name: user?.name },
+              status: 'PENDING',
+              seats,
+              createdAt: new Date().toISOString()
+            };
+            
+            return {
+              ...r,
+              requests: [...(r.requests || []), newRequest],
+              availableSeats: r.availableSeats ? Math.max(0, r.availableSeats - seats) : 0
+            };
+          }
+          return r;
+        }));
+        
+        // Add to user rides
+        setUserRides([...userRides, {
+          ...ride,
+          requestStatus: 'PENDING',
+          requestSeats: seats,
+          requestId: response.data.requestId || generateId()
+        }]);
+        
         toast.success('Ride request sent successfully!');
-        return response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to request ride');
+        toast.error('Failed to request ride. Please try again.');
       }
     } catch (error) {
       console.error('Error requesting ride:', error);
-      set({ 
-        error: error.response?.data?.message || error.message || 'Failed to request ride', 
-        requesting: false 
-      });
-      toast.error(error.response?.data?.message || error.message || 'Failed to request ride');
-      throw error;
+      setError('Failed to request ride: ' + (error.response?.data?.message || error.message));
+      toast.error('Failed to request ride: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
     }
   },
 
@@ -1286,55 +1298,105 @@ export const useRideStore = create((set, get) => ({
   },
   
   // Cancel a ride request
-  cancelRideRequest: async (requestId) => {
+  cancelRideRequest: async (rideId, requestId) => {
     try {
       set({ loading: true, error: null });
       
-      // For development without backend
-      if (isDevelopmentWithoutBackend()) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      // Make sure we have the ride in our state
+      const ride = rides.find(r => r._id === rideId);
+      if (!ride) {
+        console.error('Ride not found:', rideId);
+        toast.error('Could not find the ride. Please refresh and try again.');
+        setLoading(false);
+        return;
+      }
+      
+      let success = false;
+      
+      try {
+        // First try the specific request cancellation endpoint
+        const response = await api.delete(`/rides/requests/${requestId}`);
+        console.log('Cancelled request response:', response.data);
+        success = true;
+      } catch (cancelError) {
+        console.error('Error cancelling with request endpoint:', cancelError);
         
-        // Update state to remove the request
-        set(state => ({
-          myRequestedRides: state.myRequestedRides.filter(
-            request => request.id !== requestId && request._id !== requestId
-          ),
-          loading: false
+        // If that fails, try the ride-specific endpoint
+        try {
+          const response = await api.delete(`/rides/${rideId}/request`);
+          console.log('Cancelled via ride endpoint:', response.data);
+          success = true;
+        } catch (rideError) {
+          console.error('Error cancelling with ride endpoint:', rideError);
+          
+          // If both API calls fail but we have the ride locally, update the UI
+          // to give the user immediate feedback
+          if (ride) {
+            // Remove the request from the ride locally
+            setRides(rides.map(r => {
+              if (r._id === rideId) {
+                return {
+                  ...r,
+                  requests: r.requests?.filter(req => req._id !== requestId) || [],
+                  passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+                };
+              }
+              return r;
+            }));
+            
+            // If it's in userRides, update that too
+            setUserRides(userRides.map(r => {
+              if (r._id === rideId) {
+                return {
+                  ...r,
+                  requests: r.requests?.filter(req => req._id !== requestId) || [],
+                  passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+                };
+              }
+              return r;
+            }));
+            
+            toast.warning('Request cancelled locally. Server update failed.');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
+      if (success) {
+        // Update the local state to reflect the cancelled request
+        setRides(rides.map(r => {
+          if (r._id === rideId) {
+            return {
+              ...r,
+              requests: r.requests?.filter(req => req._id !== requestId) || [],
+              passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+            };
+          }
+          return r;
         }));
         
-        toast.success('Request cancelled successfully');
-        return true;
-      }
-      
-      const response = await api.delete(`/rides/requests/${requestId}`);
-      
-      if (response.data.status === 'success') {
-        // Update state to remove the request from myRequestedRides
-        set(state => {
-          // Find and remove the request
-          const updatedRequests = state.myRequestedRides.filter(
-            req => req._id !== requestId && req.id !== requestId
-          );
-          
-          return {
-            myRequestedRides: updatedRequests,
-            loading: false
-          };
-        });
+        // Update userRides list if it exists
+        setUserRides(userRides.map(r => {
+          if (r._id === rideId) {
+            return {
+              ...r,
+              requests: r.requests?.filter(req => req._id !== requestId) || [],
+              passengerInfo: r.passengerInfo?.filter(p => p.requestId !== requestId) || []
+            };
+          }
+          return r;
+        }));
         
-        toast.success('Request cancelled successfully');
-        return true;
+        toast.success('Ride request cancelled successfully!');
       } else {
-        throw new Error(response.data.message || 'Failed to cancel request');
+        toast.error('Failed to cancel ride request. Please try again.');
       }
     } catch (error) {
-      console.error('Error cancelling ride request:', error);
-      set({ 
-        error: error.response?.data?.message || error.message || 'Failed to cancel ride request', 
-        loading: false 
-      });
-      toast.error(error.response?.data?.message || 'Failed to cancel request');
-      throw error;
+      console.error('Error in cancelRideRequest:', error);
+      toast.error('Failed to cancel ride request: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
     }
   },
   

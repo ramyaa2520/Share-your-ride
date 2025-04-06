@@ -1,6 +1,8 @@
 const Ride = require('../models/Ride');
 const Driver = require('../models/Driver');
 const User = require('../models/User');
+const RideRequest = require('../models/RideRequest');
+const Notification = require('../models/Notification');
 
 // Calculate fare based on distance and ride type with Indian Rupee pricing
 const calculateFare = (distance, rideType, seats = 1) => {
@@ -1008,15 +1010,19 @@ exports.getAllRides = async (req, res) => {
   }
 };
 
-// Request to join an existing ride
+// Request to join a ride
 exports.requestToJoinRide = async (req, res) => {
   try {
+    const { seats = 1 } = req.body;
     const { rideId } = req.params;
-    const { seats = 1, message } = req.body;
+    const userId = req.user.id;
+    
+    console.log(`User ${userId} requesting to join ride ${rideId} with ${seats} seats`);
     
     // Find the ride
     const ride = await Ride.findById(rideId);
     
+    // Check if ride exists
     if (!ride) {
       return res.status(404).json({
         status: 'fail',
@@ -1024,67 +1030,106 @@ exports.requestToJoinRide = async (req, res) => {
       });
     }
     
-    // Check if ride is available for passengers
-    if (ride.status !== 'searching_driver') {
+    // Check if ride is active
+    if (ride.status !== 'ACTIVE') {
       return res.status(400).json({
         status: 'fail',
         message: `Cannot join a ride with status: ${ride.status}`
       });
     }
     
-    // Check if user is already a passenger
-    const isAlreadyPassenger = ride.passengers && ride.passengers.some(
-      p => p.user.toString() === req.user._id.toString()
-    );
+    // Check if user is trying to join their own ride
+    if (ride.driver.toString() === userId) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'You cannot join your own ride'
+      });
+    }
     
-    if (isAlreadyPassenger) {
+    // Convert seats to number and validate
+    const seatsRequested = Number(seats);
+    if (isNaN(seatsRequested) || seatsRequested < 1) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid number of seats requested'
+      });
+    }
+    
+    // Check if enough seats are available
+    if (seatsRequested > ride.availableSeats) {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Not enough seats available. Only ${ride.availableSeats} seats remaining.`
+      });
+    }
+    
+    // Check if the user has already requested to join this ride
+    const existingRequest = await RideRequest.findOne({
+      ride: rideId,
+      passenger: userId,
+      status: { $in: ['PENDING', 'ACCEPTED'] }
+    });
+    
+    if (existingRequest) {
       return res.status(400).json({
         status: 'fail',
         message: 'You have already requested to join this ride'
       });
     }
     
-    // Check if there are enough available seats
-    const requestedSeats = parseInt(seats, 10) || 1;
-    const totalPassengerSeats = ride.passengers.reduce(
-      (total, passenger) => total + (passenger.seats || 1), 
-      0
-    );
+    // Create a ride request
+    const rideRequest = new RideRequest({
+      ride: rideId,
+      passenger: userId,
+      driver: ride.driver,
+      seats: seatsRequested,
+      status: 'PENDING',
+      fare: ride.fare * seatsRequested, // Calculate total fare based on seats
+    });
     
-    if ((totalPassengerSeats + requestedSeats) > ride.seats) {
-      return res.status(400).json({
-        status: 'fail',
-        message: `Not enough available seats. Only ${ride.seats - totalPassengerSeats} seats left`
+    // Save the request
+    await rideRequest.save();
+    
+    // Update available seats temporarily (will be confirmed when accepted)
+    await Ride.findByIdAndUpdate(rideId, {
+      $inc: { availableSeats: -seatsRequested }
+    });
+    
+    // Add this request to the ride's requests array
+    await Ride.findByIdAndUpdate(rideId, {
+      $push: { requests: rideRequest._id }
+    });
+    
+    // Find driver for notification
+    const driver = await User.findById(ride.driver);
+    
+    // Create notification for driver
+    if (driver) {
+      const passenger = await User.findById(userId);
+      const notification = new Notification({
+        recipient: driver._id,
+        title: 'New Ride Request',
+        message: `${passenger ? passenger.name : 'A passenger'} has requested to join your ride from ${ride.pickup.address} to ${ride.destination.address}`,
+        type: 'RIDE_REQUEST',
+        relatedId: rideRequest._id
       });
+      
+      await notification.save();
     }
     
-    // Get user details
-    const user = await User.findById(req.user._id);
-    
-    // Add the passenger request
-    ride.passengers.push({
-      user: req.user._id,
-      seats: requestedSeats,
-      status: 'pending',
-      message: message || '',
-      contactPhone: user.phoneNumber || '',
-      requestedAt: new Date()
-    });
-    
-    await ride.save();
-    
-    res.status(200).json({
+    return res.status(201).json({
       status: 'success',
-      message: 'Your request to join the ride has been submitted',
+      message: 'Ride request created successfully',
       data: {
-        ride
+        rideRequest,
+        requestId: rideRequest._id
       }
     });
-  } catch (err) {
-    console.error('Error requesting to join ride:', err);
-    res.status(400).json({
-      status: 'fail',
-      message: err.message
+  } catch (error) {
+    console.error('Error in requestToJoinRide:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
     });
   }
 };
