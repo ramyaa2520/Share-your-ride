@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "buildCommand": "cd rideshare-app/frontend && npm install && npm run build",
+  "outputDirectory": "rideshare-app/frontend/build"
+} 
