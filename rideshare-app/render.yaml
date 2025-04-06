@@ -2,7 +2,8 @@ services:
   - type: web
     name: rideshare-backend
     runtime: docker
-    rootDir: rideshare-app
+    rootDir: .
+    dockerfilePath: ./rideshare-app/Dockerfile
     plan: free
     healthCheckPath: /
     envVars:
