@@ -1185,4 +1185,462 @@ exports.cancelRideRequest = async (req, res) => {
       message: err.message
     });
   }
+};
+
+// Cancel a ride request by request ID
+exports.cancelRideRequestById = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user._id;
+    
+    console.log(`User ${userId} attempting to cancel request ${requestId}`);
+    
+    // Find the ride request
+    const rideRequest = await RideRequest.findById(requestId);
+    
+    if (!rideRequest) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Ride request not found'
+      });
+    }
+    
+    // Check if the user owns this request
+    if (rideRequest.passenger.toString() !== userId.toString()) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You can only cancel your own ride requests'
+      });
+    }
+    
+    // Check if the request is already cancelled or completed
+    if (rideRequest.status === 'CANCELLED' || rideRequest.status === 'REJECTED') {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Request is already ${rideRequest.status.toLowerCase()}`
+      });
+    }
+    
+    // Check if the request is already accepted
+    if (rideRequest.status === 'ACCEPTED') {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Cannot cancel an accepted request. Please contact the driver.'
+      });
+    }
+    
+    // Update the request status
+    rideRequest.status = 'CANCELLED';
+    await rideRequest.save();
+    
+    // Find the ride and update available seats if status was PENDING
+    if (rideRequest.status === 'PENDING') {
+      const ride = await Ride.findById(rideRequest.ride);
+      if (ride) {
+        // Restore the seats
+        ride.availableSeats += rideRequest.seats;
+        await ride.save();
+      }
+    }
+    
+    return res.status(200).json({
+      status: 'success',
+      message: 'Ride request cancelled successfully'
+    });
+  } catch (error) {
+    console.error('Error cancelling ride request by ID:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Get passenger rides
+exports.getMyPassengerRides = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Find all ride requests for this user
+    const rideRequests = await RideRequest.find({ passenger: userId })
+      .populate({
+        path: 'ride',
+        populate: {
+          path: 'driver',
+          select: 'name phoneNumber vehicle'
+        }
+      })
+      .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rideRequests.length,
+      data: {
+        requests: rideRequests
+      }
+    });
+  } catch (error) {
+    console.error('Error getting passenger rides:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Get my driver rides
+exports.getMyDriverRides = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Find all rides where the user is the driver
+    const rides = await Ride.find({ driver: userId })
+      .populate({
+        path: 'requests',
+        populate: {
+          path: 'passenger',
+          select: 'name phoneNumber profilePicture'
+        }
+      })
+      .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (error) {
+    console.error('Error getting driver rides:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Respond to a passenger request (accept/reject)
+exports.respondToPassengerRequest = async (req, res) => {
+  try {
+    const { rideId, requestId } = req.params;
+    const { status, message } = req.body;
+    const userId = req.user._id;
+    
+    // Validate status
+    if (!['ACCEPTED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Status must be either ACCEPTED or REJECTED'
+      });
+    }
+    
+    // Find the ride
+    const ride = await Ride.findById(rideId);
+    if (!ride) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Ride not found'
+      });
+    }
+    
+    // Check if user is the driver of this ride
+    if (ride.driver.toString() !== userId.toString()) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You must be the driver of this ride to respond to requests'
+      });
+    }
+    
+    // Find the request
+    const request = await RideRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Request not found'
+      });
+    }
+    
+    // Check if request belongs to this ride
+    if (request.ride.toString() !== rideId.toString()) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'This request does not belong to the specified ride'
+      });
+    }
+    
+    // Check if request is pending
+    if (request.status !== 'PENDING') {
+      return res.status(400).json({
+        status: 'fail',
+        message: `Cannot respond to a request with status: ${request.status}`
+      });
+    }
+    
+    // Update request status
+    request.status = status;
+    request.responseMessage = message || '';
+    await request.save();
+    
+    // If accepting, don't modify available seats since they were already reduced
+    // If rejecting, restore the available seats
+    if (status === 'REJECTED') {
+      ride.availableSeats += request.seats;
+      await ride.save();
+    }
+    
+    // Create notification for passenger
+    const notification = new Notification({
+      recipient: request.passenger,
+      title: status === 'ACCEPTED' ? 'Ride Request Accepted' : 'Ride Request Rejected',
+      message: status === 'ACCEPTED' 
+        ? `Your request to join a ride from ${ride.pickup.address} to ${ride.destination.address} has been accepted.`
+        : `Your request to join a ride from ${ride.pickup.address} to ${ride.destination.address} has been rejected.${message ? ` Reason: ${message}` : ''}`,
+      type: status === 'ACCEPTED' ? 'RIDE_ACCEPTED' : 'RIDE_REJECTED',
+      relatedId: request._id
+    });
+    
+    await notification.save();
+    
+    return res.status(200).json({
+      status: 'success',
+      message: `Request ${status.toLowerCase()} successfully`,
+      data: {
+        request
+      }
+    });
+  } catch (error) {
+    console.error('Error responding to passenger request:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Add ride review
+exports.addRideReview = async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { rating, comment } = req.body;
+    const userId = req.user._id;
+    
+    // Validate rating
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Rating must be between 1 and 5'
+      });
+    }
+    
+    // Find the ride
+    const ride = await Ride.findById(rideId);
+    if (!ride) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Ride not found'
+      });
+    }
+    
+    // Check if user was part of the ride
+    const wasPassenger = ride.user.toString() === userId.toString();
+    const wasDriver = ride.driver && ride.driver.toString() === userId.toString();
+    
+    if (!wasPassenger && !wasDriver) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You can only review rides you participated in'
+      });
+    }
+    
+    // Update ride with review
+    if (wasPassenger) {
+      // Passenger reviewing driver
+      ride.ratings.userToDriver = {
+        rating,
+        comment: comment || ''
+      };
+    } else {
+      // Driver reviewing passenger
+      ride.ratings.driverToUser = {
+        rating,
+        comment: comment || ''
+      };
+    }
+    
+    await ride.save();
+    
+    return res.status(200).json({
+      status: 'success',
+      message: 'Review submitted successfully',
+      data: {
+        review: wasPassenger ? ride.ratings.userToDriver : ride.ratings.driverToUser
+      }
+    });
+  } catch (error) {
+    console.error('Error adding ride review:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Find nearby rides
+exports.getNearbyRides = async (req, res) => {
+  try {
+    const { lat, lng, radius = 30 } = req.query; // radius in km
+    
+    if (!lat || !lng) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Latitude and longitude are required'
+      });
+    }
+    
+    const coords = [parseFloat(lng), parseFloat(lat)];
+    
+    // Find rides with pickup or destination near the provided coordinates
+    const rides = await Ride.find({
+      status: 'ACTIVE',
+      $or: [
+        {
+          'pickup.location': {
+            $near: {
+              $geometry: {
+                type: 'Point',
+                coordinates: coords
+              },
+              $maxDistance: parseInt(radius) * 1000 // Convert km to meters
+            }
+          }
+        },
+        {
+          'destination.location': {
+            $near: {
+              $geometry: {
+                type: 'Point',
+                coordinates: coords
+              },
+              $maxDistance: parseInt(radius) * 1000
+            }
+          }
+        }
+      ]
+    }).limit(20);
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (error) {
+    console.error('Error finding nearby rides:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Search rides
+exports.searchRides = async (req, res) => {
+  try {
+    const { 
+      pickupLat, 
+      pickupLng, 
+      destLat, 
+      destLng, 
+      date, 
+      seats,
+      radius = 30  // km
+    } = req.query;
+    
+    let query = { status: 'ACTIVE' };
+    
+    // Add pickup location filter if provided
+    if (pickupLat && pickupLng) {
+      query['pickup.location'] = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)]
+          },
+          $maxDistance: parseInt(radius) * 1000 // Convert km to meters
+        }
+      };
+    }
+    
+    // Add destination location filter if provided
+    if (destLat && destLng) {
+      query['destination.location'] = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [parseFloat(destLng), parseFloat(destLat)]
+          },
+          $maxDistance: parseInt(radius) * 1000
+        }
+      };
+    }
+    
+    // Add date filter if provided
+    if (date) {
+      const searchDate = new Date(date);
+      const nextDay = new Date(searchDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      query.departureTime = {
+        $gte: searchDate,
+        $lt: nextDay
+      };
+    }
+    
+    // Add seats filter if provided
+    if (seats) {
+      query.availableSeats = { $gte: parseInt(seats) };
+    }
+    
+    // Execute the query
+    const rides = await Ride.find(query).limit(50);
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (error) {
+    console.error('Error searching rides:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+// Get public active rides
+exports.getPublicActiveRides = async (req, res) => {
+  try {
+    const rides = await Ride.find({ status: 'ACTIVE' })
+      .sort({ createdAt: -1 })
+      .limit(10);
+    
+    return res.status(200).json({
+      status: 'success',
+      results: rides.length,
+      data: {
+        rides
+      }
+    });
+  } catch (error) {
+    console.error('Error getting public active rides:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
 }; 
