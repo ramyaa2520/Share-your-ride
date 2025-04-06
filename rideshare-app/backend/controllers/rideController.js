@@ -853,4 +853,128 @@ exports.getMyRideOffers = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// Get all available rides with search and pagination
+exports.getAllRides = async (req, res) => {
+  try {
+    // Extract query parameters
+    const { 
+      page = 1, 
+      limit = 6,
+      pickup,
+      destination,
+      minFare,
+      maxFare,
+      status,
+      sortBy = 'requestedAt'
+    } = req.query;
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build the query object
+    let query = {};
+
+    // Filter by status - default to rides that are still searching for drivers
+    if (status) {
+      query.status = status;
+    } else {
+      query.status = 'searching_driver';
+    }
+
+    // Filter by pickup location if provided
+    if (pickup) {
+      try {
+        const [longitude, latitude] = pickup.split(',').map(coord => parseFloat(coord.trim()));
+        query['pickup.location'] = {
+          $near: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [longitude, latitude]
+            },
+            $maxDistance: 30000 // 30km in meters
+          }
+        };
+      } catch (err) {
+        console.log('Error parsing pickup coordinates:', err);
+      }
+    }
+
+    // Filter by destination location if provided
+    if (destination) {
+      try {
+        const [longitude, latitude] = destination.split(',').map(coord => parseFloat(coord.trim()));
+        query['destination.location'] = {
+          $near: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [longitude, latitude]
+            },
+            $maxDistance: 30000 // 30km in meters
+          }
+        };
+      } catch (err) {
+        console.log('Error parsing destination coordinates:', err);
+      }
+    }
+
+    // Filter by fare range if provided
+    if (minFare || maxFare) {
+      query['fare.estimatedFare'] = {};
+      if (minFare) query['fare.estimatedFare'].$gte = parseFloat(minFare);
+      if (maxFare) query['fare.estimatedFare'].$lte = parseFloat(maxFare);
+    }
+
+    // Exclude rides created by the current user
+    query.user = { $ne: req.user._id };
+
+    // Build the sort options - most recent by default
+    let sortOptions = {};
+    if (sortBy === 'fare_low') {
+      sortOptions = { 'fare.estimatedFare': 1 };
+    } else if (sortBy === 'fare_high') {
+      sortOptions = { 'fare.estimatedFare': -1 };
+    } else if (sortBy === 'distance_low') {
+      sortOptions = { estimatedDistance: 1 };
+    } else if (sortBy === 'distance_high') {
+      sortOptions = { estimatedDistance: -1 };
+    } else {
+      // Default to most recent
+      sortOptions = { requestedAt: -1 };
+    }
+
+    // Count total documents for pagination
+    const total = await Ride.countDocuments(query);
+
+    // Execute query with pagination
+    const rides = await Ride.find(query)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitNum)
+      .populate({
+        path: 'user',
+        select: 'name profilePicture ratings'
+      });
+
+    // Calculate total pages
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        results: rides.length,
+        totalPages,
+        currentPage: pageNum,
+        rides
+      }
+    });
+  } catch (err) {
+    console.error('Error getting rides:', err);
+    res.status(400).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
 }; 

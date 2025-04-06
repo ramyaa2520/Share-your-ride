@@ -51,6 +51,12 @@ export const useRideStore = create((set, get) => ({
   myRequestedRides: [], // Add array for rides requested by the current user
   currentRide: null,
   nearbyDrivers: [],
+  availableRides: [], // For the FindRide page
+  pagination: {
+    currentPage: 1,
+    totalPages: 1,
+    totalResults: 0
+  },
   loading: false,
   error: null,
   success: null,
@@ -1571,6 +1577,44 @@ export const useRideStore = create((set, get) => ({
       });
       toast.error('Failed to create test rides');
       return false;
+    }
+  },
+
+  // Add action to get available rides
+  getAvailableRides: async (queryParams = {}) => {
+    try {
+      set({ loading: true, error: null });
+      
+      // Build query string from the provided parameters
+      const queryString = Object.entries(queryParams)
+        .filter(([_, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+      
+      // Make API request
+      const response = await api.get(`/rides/available${queryString ? `?${queryString}` : ''}`);
+      
+      if (response.data.status === 'success') {
+        set({ 
+          availableRides: response.data.data.rides,
+          pagination: {
+            totalPages: response.data.data.totalPages,
+            currentPage: response.data.data.currentPage,
+            totalResults: response.data.data.results
+          },
+          loading: false 
+        });
+        return response.data.data;
+      } else {
+        throw new Error('Failed to fetch available rides');
+      }
+    } catch (error) {
+      console.error('Error fetching available rides:', error);
+      set({ 
+        error: error.response?.data?.message || error.message || 'Failed to fetch available rides', 
+        loading: false 
+      });
+      throw error;
     }
   }
 })); 

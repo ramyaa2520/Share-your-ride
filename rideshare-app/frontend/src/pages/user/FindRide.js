@@ -23,7 +23,11 @@ import {
   DialogActions,
   IconButton,
   Collapse,
-  Pagination
+  Pagination,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -42,120 +46,126 @@ import StarIcon from '@mui/icons-material/Star';
 import PhoneIcon from '@mui/icons-material/Phone';
 import PersonIcon from '@mui/icons-material/Person';
 import CloseIcon from '@mui/icons-material/Close';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import SortIcon from '@mui/icons-material/Sort';
+import DriveEtaIcon from '@mui/icons-material/DriveEta';
+import TripOriginIcon from '@mui/icons-material/TripOrigin';
+import FmdGoodIcon from '@mui/icons-material/FmdGood';
 
 import { useRideStore } from '../../store/rideStore';
 import PlaceAutocomplete from '../../components/map/PlaceAutocomplete';
 import MapComponent from '../../components/map/MapComponent';
+import { useAuthStore } from '../../store/authStore';
 
 // Extend dayjs with relativeTime plugin
 dayjs.extend(relativeTime);
 
 const FindRide = () => {
-  const { rideOffers, getRideOffers, requestToJoinRide, loading, error, createTestRides } = useRideStore();
+  const { 
+    availableRides, 
+    pagination,
+    getAvailableRides, 
+    loading, 
+    error 
+  } = useRideStore();
+  
+  const { user } = useAuthStore();
   
   const [searchParams, setSearchParams] = useState({
-    departurePlace: null,
-    destinationPlace: null,
-    departureDate: null
+    pickup: null,
+    destination: null,
+    minFare: '',
+    maxFare: '',
+    sortBy: 'requestedAt'
   });
   
   const [filterOpen, setFilterOpen] = useState(true);
-  const [requestLoading, setRequestLoading] = useState(false);
-  const [requestingRideId, setRequestingRideId] = useState(null);
   const [selectedRide, setSelectedRide] = useState(null);
-  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-  const [requestMessage, setRequestMessage] = useState('');
+  const [rideDetailsOpen, setRideDetailsOpen] = useState(false);
   const [markers, setMarkers] = useState([]);
   const [routePolyline, setRoutePolyline] = useState(null);
-  const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi, India
+  const [mapCenter, setMapCenter] = useState({ lat: 20.5937, lng: 78.9629 }); // Default to center of India
   
-  // Add pagination state
-  const [page, setPage] = useState(1);
-  const itemsPerPage = 6;
-  const [totalPages, setTotalPages] = useState(1);
-  const [paginatedRides, setPaginatedRides] = useState([]);
-  
-  const [filteredRides, setFilteredRides] = useState([]);
-  const [dateFilter, setDateFilter] = useState(null);
-  const [availableSeatsFilter, setAvailableSeatsFilter] = useState('');
-  const [priceRangeFilter, setPriceRangeFilter] = useState([0, 1000]);
-  const [queryParams, setQueryParams] = useState('');
-  const [departure, setDeparture] = useState(null);
-  const [destination, setDestination] = useState(null);
-  const [departureQuery, setDepartureQuery] = useState('');
-  const [destinationQuery, setDestinationQuery] = useState('');
-  
+  // Fetch rides on component mount
   useEffect(() => {
-    const fetchRides = async () => {
-      console.log('Fetching ride offers...');
-      try {
-        await getRideOffers();
-      } catch (err) {
-        console.error('Error fetching ride offers:', err);
-      }
-    };
-    
     fetchRides();
-  }, [getRideOffers]);
+  }, []);
   
-  // Handle pagination and display logic in a separate effect
-  useEffect(() => {
-    console.log('Ride offers received:', rideOffers);
-    
-    if (!rideOffers || rideOffers.length === 0) {
-      setPaginatedRides([]);
-      setTotalPages(1);
-      console.log('No ride offers to display');
-      return;
+  // Fetch rides when page changes
+  const fetchRides = async (page = 1) => {
+    try {
+      // Build query params object
+      const queryParams = {
+        page,
+        limit: 6,
+        sortBy: searchParams.sortBy
+      };
+      
+      // Add other params if they exist
+      if (searchParams.pickup?.location) {
+        queryParams.pickup = `${searchParams.pickup.location.coordinates[0]},${searchParams.pickup.location.coordinates[1]}`;
+      }
+      
+      if (searchParams.destination?.location) {
+        queryParams.destination = `${searchParams.destination.location.coordinates[0]},${searchParams.destination.location.coordinates[1]}`;
+      }
+      
+      if (searchParams.minFare) {
+        queryParams.minFare = searchParams.minFare;
+      }
+      
+      if (searchParams.maxFare) {
+        queryParams.maxFare = searchParams.maxFare;
+      }
+      
+      console.log('Fetching rides with params:', queryParams);
+      await getAvailableRides(queryParams);
+    } catch (err) {
+      console.error('Error fetching available rides:', err);
     }
-    
-    // Sort by departure time (soonest first)
-    const sortedRides = [...rideOffers].sort((a, b) => {
-      const dateA = new Date(a.departureTime || 0);
-      const dateB = new Date(b.departureTime || 0);
-      return dateA - dateB;
-    });
-    
-    console.log("Sorted rides:", sortedRides.map(r => ({ 
-      id: r.id || r._id, 
-      departure: r.departure?.city || 'Unknown',
-      destination: r.destination?.city || 'Unknown',
-      departureTime: r.departureTime ? new Date(r.departureTime).toLocaleString() : 'unknown'
-    })));
-    
-    // Calculate total pages
-    const total = Math.ceil(sortedRides.length / itemsPerPage);
-    setTotalPages(total || 1);
-    
-    // Get current page items
-    const startIndex = (page - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    const currentPageRides = sortedRides.slice(startIndex, endIndex);
-    console.log(`Displaying rides ${startIndex+1}-${Math.min(endIndex, sortedRides.length)} of ${sortedRides.length}`);
-    
-    setPaginatedRides(currentPageRides);
-  }, [rideOffers, page, itemsPerPage]);
+  };
   
-  const handleDeparturePlaceChange = (place) => {
+  const handlePickupChange = (place) => {
     if (!place) return;
     setSearchParams(prev => ({
       ...prev,
-      departurePlace: place
+      pickup: place
     }));
   };
   
-  const handleDestinationPlaceChange = (place) => {
+  const handleDestinationChange = (place) => {
     if (!place) return;
     setSearchParams(prev => ({
       ...prev,
-      destinationPlace: place
+      destination: place
     }));
   };
   
-  const handleDateChange = (newValue) => {
+  const handleMinFareChange = (e) => {
+    const value = e.target.value;
+    if (value === '' || /^\d+$/.test(value)) {
+      setSearchParams(prev => ({
+        ...prev,
+        minFare: value
+      }));
+    }
+  };
+  
+  const handleMaxFareChange = (e) => {
+    const value = e.target.value;
+    if (value === '' || /^\d+$/.test(value)) {
+      setSearchParams(prev => ({
+        ...prev,
+        maxFare: value
+      }));
+    }
+  };
+  
+  const handleSortChange = (e) => {
     setSearchParams(prev => ({
       ...prev,
-      departureDate: newValue
+      sortBy: e.target.value
     }));
   };
   
@@ -163,84 +173,80 @@ const FindRide = () => {
     setFilterOpen(!filterOpen);
   };
   
-  const handleSearch = async () => {
-    const filters = {};
-    
-    if (searchParams.departurePlace?.location) {
-      filters.departureLat = searchParams.departurePlace.location.lat;
-      filters.departureLng = searchParams.departurePlace.location.lng;
-      filters.departureRadius = 30; // 30km radius
-    }
-    
-    if (searchParams.destinationPlace?.location) {
-      filters.destinationLat = searchParams.destinationPlace.location.lat;
-      filters.destinationLng = searchParams.destinationPlace.location.lng;
-      filters.destinationRadius = 30; // 30km radius
-    }
-    
-    if (searchParams.departureDate) {
-      filters.departureDate = searchParams.departureDate.format('YYYY-MM-DD');
-    }
-    
-    await getRideOffers(filters);
+  const handleSearch = () => {
+    fetchRides(1); // Reset to first page when searching
   };
   
   const handleClearFilters = () => {
     setSearchParams({
-      departurePlace: null,
-      destinationPlace: null,
-      departureDate: null
+      pickup: null,
+      destination: null,
+      minFare: '',
+      maxFare: '',
+      sortBy: 'requestedAt'
     });
     
-    getRideOffers();
+    // Fetch rides with cleared filters
+    fetchRides(1);
+  };
+  
+  const handlePageChange = (event, value) => {
+    fetchRides(value);
   };
   
   const handleViewRideDetails = (ride) => {
     setSelectedRide(ride);
+    setRideDetailsOpen(true);
     
-    // Safety check for location data
-    if (!ride.departure?.location || !ride.destination?.location) {
-      console.error("Ride is missing location data:", ride);
-      return;
+    // Set markers for the map
+    if (ride.pickup?.location?.coordinates && ride.destination?.location?.coordinates) {
+      const pickupCoords = ride.pickup.location.coordinates;
+      const destCoords = ride.destination.location.coordinates;
+      
+      const newMarkers = [
+        {
+          id: 'pickup',
+          position: { 
+            lat: pickupCoords[1], 
+            lng: pickupCoords[0] 
+          },
+          title: 'Pickup',
+          info: ride.pickup.address || 'Pickup location'
+        },
+        {
+          id: 'destination',
+          position: { 
+            lat: destCoords[1], 
+            lng: destCoords[0] 
+          },
+          title: 'Destination',
+          info: ride.destination.address || 'Destination location'
+        }
+      ];
+      
+      setMarkers(newMarkers);
+      setMapCenter({ lat: pickupCoords[1], lng: pickupCoords[0] });
+      
+      // Calculate route
+      calculateRoute(
+        { lat: pickupCoords[1], lng: pickupCoords[0] },
+        { lat: destCoords[1], lng: destCoords[0] }
+      );
     }
-    
-    // Set markers and polyline for the map
-    const newMarkers = [
-      {
-        id: 'departure',
-        position: { 
-          lat: ride.departure.location.lat, 
-          lng: ride.departure.location.lng 
-        },
-        title: 'Departure',
-        info: ride.departure.address || 'Departure location'
-      },
-      {
-        id: 'destination',
-        position: { 
-          lat: ride.destination.location.lat, 
-          lng: ride.destination.location.lng 
-        },
-        title: 'Destination',
-        info: ride.destination.address || 'Destination location'
-      }
-    ];
-    
-    setMarkers(newMarkers);
-    setMapCenter(ride.departure.location);
-    
-    // Calculate route for the selected ride
-    calculateRoute(
-      ride.departure.location,
-      ride.destination.location
-    );
   };
   
-  const calculateRoute = async (departure, destination) => {
+  const handleCloseRideDetails = () => {
+    setRideDetailsOpen(false);
+    setSelectedRide(null);
+    setRoutePolyline(null);
+    setMarkers([]);
+  };
+  
+  const calculateRoute = async (pickup, destination) => {
     try {
       const response = await fetch(
         `https://api.locationiq.com/v1/directions/driving/` +
-        `${departure.lng},${departure.lat};${destination.lng},${destination.lat}` +
+        `${pickup.lng},${pickup.lat};${destination.lng},${destination.lat}` +
         `?key=pk.c61dfc5608103dcf469a185a22842c95&steps=false&overview=full&geometries=geojson`
       );
       
@@ -248,473 +254,559 @@ const FindRide = () => {
       
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
-        
-        // Create polyline from route geometry
-        if (route.geometry && route.geometry.coordinates) {
-          const path = route.geometry.coordinates.map(coord => ({
-            lng: coord[0],
-            lat: coord[1]
-          }));
-          
-          setRoutePolyline({
-            path,
-            options: {
-              strokeColor: '#4285F4',
-              strokeWeight: 4,
-              strokeOpacity: 0.8
-            }
-          });
-        }
+        setRoutePolyline(route.geometry);
+      } else {
+        console.error('No route found');
+        setRoutePolyline(null);
       }
-    } catch (error) {
-      console.error('Error calculating route:', error);
-    }
-  };
-  
-  const handleRequestToJoin = (ride) => {
-    setSelectedRide(ride);
-    setJoinDialogOpen(true);
-  };
-  
-  const handleCloseJoinDialog = () => {
-    setJoinDialogOpen(false);
-    setRequestMessage('');
-  };
-  
-  const handleSubmitJoinRequest = async () => {
-    if (!selectedRide) return;
-    
-    setRequestLoading(true);
-    setRequestingRideId(selectedRide.id);
-    
-    try {
-      await requestToJoinRide(selectedRide.id, {
-        message: requestMessage,
-        seats: 1 // Default to 1 seat
-      });
-      
-      setJoinDialogOpen(false);
-      setRequestMessage('');
-      
-      // Show success or navigate to "My Rides" page
-    } catch (error) {
-      console.error('Error requesting to join ride:', error);
-    } finally {
-      setRequestLoading(false);
-      setRequestingRideId(null);
+    } catch (err) {
+      console.error('Error calculating route:', err);
+      setRoutePolyline(null);
     }
   };
   
   const formatDate = (dateStr) => {
-    return dayjs(dateStr).format('ddd, MMM D, YYYY');
+    if (!dateStr) return 'N/A';
+    return dayjs(dateStr).format('MMM D, YYYY');
   };
   
   const formatTime = (dateStr) => {
+    if (!dateStr) return 'N/A';
     return dayjs(dateStr).format('h:mm A');
   };
   
-  // Handle page change
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    // Scroll to top when changing pages
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    });
+  const formatTimeSince = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return dayjs(dateStr).fromNow();
   };
   
-  const handleCreateTestRides = async () => {
-    try {
-      await createTestRides();
-      // After creating test rides, refresh the list
-      await getRideOffers();
-    } catch (err) {
-      console.error('Error creating test rides:', err);
+  const getRideStatusChip = (status) => {
+    let color = 'default';
+    let label = status;
+    
+    switch (status) {
+      case 'searching_driver':
+        color = 'info';
+        label = 'Looking for driver';
+        break;
+      case 'driver_assigned':
+        color = 'primary';
+        label = 'Driver assigned';
+        break;
+      case 'driver_arrived':
+        color = 'secondary';
+        label = 'Driver arrived';
+        break;
+      case 'in_progress':
+        color = 'warning';
+        label = 'In progress';
+        break;
+      case 'completed':
+        color = 'success';
+        label = 'Completed';
+        break;
+      case 'cancelled':
+        color = 'error';
+        label = 'Cancelled';
+        break;
+      default:
+        color = 'default';
+        label = status;
     }
+    
+    return <Chip size="small" color={color} label={label} />;
   };
+  
+  // Render empty state when no rides are available
+  const renderEmptyState = () => (
+    <Box sx={{ textAlign: 'center', p: 4 }}>
+      <DriveEtaIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+      <Typography variant="h5" color="text.secondary" gutterBottom>
+        No rides available
+      </Typography>
+      <Typography variant="body1" color="text.secondary" mb={3}>
+        Try adjusting your search filters or check back later.
+      </Typography>
+      <Button variant="outlined" onClick={handleClearFilters}>
+        Clear filters
+      </Button>
+    </Box>
+  );
   
   return (
-    <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Typography variant="h4">Find a Ride</Typography>
-        
-        <Button 
-          variant="outlined" 
-          color="secondary"
-          onClick={handleCreateTestRides}
-          disabled={loading}
-        >
-          Create Test Rides
-        </Button>
-      </Stack>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Find a Ride
+      </Typography>
       
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">Search for Rides</Typography>
-          <IconButton onClick={handleFilterToggle} size="small">
-            {filterOpen ? <CloseIcon /> : <FilterListIcon />}
-          </IconButton>
-        </Stack>
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <Typography variant="h6">Search Rides</Typography>
+          <Button 
+            startIcon={<FilterListIcon />}
+            onClick={handleFilterToggle}
+            variant="text"
+          >
+            {filterOpen ? 'Hide Filters' : 'Show Filters'}
+          </Button>
+        </Box>
         
         <Collapse in={filterOpen}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12} md={6}>
               <PlaceAutocomplete
-                label="From"
-                placeholder="Departure city or address"
-                onChange={handleDeparturePlaceChange}
-                value={searchParams.departurePlace}
+                label="Pickup Location"
+                fullWidth
+                value={searchParams.pickup ? searchParams.pickup.address : ''}
+                onChange={handlePickupChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <TripOriginIcon color="primary" />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
-            
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={6}>
               <PlaceAutocomplete
-                label="To"
-                placeholder="Destination city or address"
-                onChange={handleDestinationPlaceChange}
-                value={searchParams.destinationPlace}
+                label="Destination"
+                fullWidth
+                value={searchParams.destination ? searchParams.destination.address : ''}
+                onChange={handleDestinationChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FmdGoodIcon color="error" />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
-            
-            <Grid item xs={12} md={4}>
-              <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <DatePicker
-                  label="Departure Date"
-                  value={searchParams.departureDate}
-                  onChange={handleDateChange}
-                  slotProps={{
-                    textField: {
-                      fullWidth: true,
-                      InputProps: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <EventIcon />
-                          </InputAdornment>
-                        ),
-                      }
-                    }
-                  }}
-                />
-              </LocalizationProvider>
+            <Grid item xs={6} md={3}>
+              <TextField
+                label="Min Fare (₹)"
+                fullWidth
+                value={searchParams.minFare}
+                onChange={handleMinFareChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <AttachMoneyIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Grid>
-            
-            <Grid item xs={12}>
-              <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 1 }}>
-                <Button
-                  variant="outlined"
-                  onClick={handleClearFilters}
+            <Grid item xs={6} md={3}>
+              <TextField
+                label="Max Fare (₹)"
+                fullWidth
+                value={searchParams.maxFare}
+                onChange={handleMaxFareChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <AttachMoneyIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="sort-by-label">Sort By</InputLabel>
+                <Select
+                  labelId="sort-by-label"
+                  value={searchParams.sortBy}
+                  onChange={handleSortChange}
+                  label="Sort By"
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <SortIcon fontSize="small" />
+                    </InputAdornment>
+                  }
                 >
-                  Clear
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<SearchIcon />}
-                  onClick={handleSearch}
-                  disabled={loading}
-                >
-                  Search Rides
-                </Button>
-              </Stack>
+                  <MenuItem value="requestedAt">Most Recent</MenuItem>
+                  <MenuItem value="fare_low">Price: Low to High</MenuItem>
+                  <MenuItem value="fare_high">Price: High to Low</MenuItem>
+                  <MenuItem value="distance_low">Distance: Shortest First</MenuItem>
+                  <MenuItem value="distance_high">Distance: Longest First</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
+          
+          <Box display="flex" justifyContent="flex-end" gap={1}>
+            <Button 
+              variant="outlined" 
+              onClick={handleClearFilters}
+              disabled={loading}
+            >
+              Clear
+            </Button>
+            <Button 
+              variant="contained" 
+              startIcon={<SearchIcon />}
+              onClick={handleSearch}
+              disabled={loading}
+            >
+              Search
+            </Button>
+          </Box>
         </Collapse>
       </Paper>
       
-      {/* Display rides */}
-      <Box sx={{ mt: 4 }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-        
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
-            <CircularProgress />
-          </Box>
-        ) : paginatedRides.length === 0 ? (
-          <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom>
-              No rides found
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Try adjusting your search criteria or check back later.
-            </Typography>
-          </Paper>
-        ) : (
-          <>
-            <Grid container spacing={3}>
-              {paginatedRides.map((ride) => (
-                <Grid item xs={12} md={selectedRide ? 12 : 6} lg={selectedRide ? 12 : 4} key={ride.id}>
-                  <Card 
-                    elevation={selectedRide?.id === ride.id ? 4 : 2} 
-                    sx={{ 
-                      height: '100%',
-                      display: 'flex', 
-                      flexDirection: 'column',
-                      cursor: 'pointer',
-                      '&:hover': { boxShadow: 6 },
-                      border: selectedRide?.id === ride.id ? '2px solid #3f51b5' : 'none'
-                    }}
-                    onClick={() => handleViewRideDetails(ride)}
-                  >
-                    <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
-                        <Box>
-                          <Typography variant="h6">
-                            {ride.departure.city} → {ride.destination.city}
-                          </Typography>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            {formatDate(ride.departureTime)} at {formatTime(ride.departureTime)}
-                          </Typography>
-                        </Box>
-                        <Chip 
-                          label={ride.price ? `₹${ride.price}` : 
-                            (ride.fare?.estimatedFare ? `₹${ride.fare.estimatedFare}` : 'Price N/A')} 
-                          color="primary" 
-                          icon={<AttachMoneyIcon />}
-                        />
-                      </Stack>
-                      
-                      <Divider sx={{ my: 1 }} />
-                      
-                      <Grid container spacing={1} sx={{ mb: 1 }}>
-                        <Grid item xs={6}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <AirlineSeatReclineNormalIcon fontSize="small" />
-                            <Typography variant="body2">
-                              {ride.availableSeats} {ride.availableSeats === 1 ? 'seat' : 'seats'}
-                            </Typography>
-                          </Stack>
-                        </Grid>
-                        
-                        <Grid item xs={6}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <DirectionsCarIcon fontSize="small" />
-                            <Typography variant="body2" noWrap>
-                              {ride.vehicle?.model || 'No vehicle info'}
-                            </Typography>
-                          </Stack>
-                        </Grid>
-                      </Grid>
-                      
-                      <Divider sx={{ my: 1 }} />
-                      
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                          {ride.driver.name.charAt(0)}
-                        </Avatar>
-                        <Typography variant="body2">{ride.driver.name}</Typography>
-                        
-                        {ride.driver.rating && (
-                          <Rating
-                            value={ride.driver.rating}
-                            readOnly
-                            precision={0.5}
-                            size="small"
-                            emptyIcon={<StarIcon fontSize="inherit" />}
-                          />
-                        )}
-                      </Stack>
-                    </CardContent>
-                    
-                    <CardActions sx={{ pt: 0, pb: 2, px: 2, alignSelf: 'flex-end' }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRequestToJoin(ride);
-                        }}
-                        disabled={requestLoading && requestingRideId === ride.id}
-                        startIcon={requestLoading && requestingRideId === ride.id ? <CircularProgress size={20} /> : null}
-                      >
-                        Request to Join
-                      </Button>
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-            
-            {/* Pagination controls */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-              <Pagination 
-                count={totalPages} 
-                page={page} 
-                onChange={handlePageChange} 
-                color="primary" 
-              />
-            </Box>
-          </>
-        )}
-      </Box>
-      
-      {selectedRide && (
-        <Grid item xs={12} md={5}>
-          <Paper elevation={3} sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" gutterBottom>
-              Ride Details
-            </Typography>
-            
-            <Box sx={{ height: 300, mb: 3 }}>
-              <MapComponent
-                height="100%"
-                markers={markers}
-                polyline={routePolyline}
-                center={mapCenter}
-                zoom={12}
-              />
-            </Box>
-            
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  From
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  {selectedRide.departure.address}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  To
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  {selectedRide.destination.address}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Date
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  {formatDate(selectedRide.departureTime)}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Time
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  {formatTime(selectedRide.departureTime)}
-                </Typography>
-              </Grid>
-            </Grid>
-            
-            <Divider sx={{ my: 2 }} />
-            
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Driver
-              </Typography>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Avatar sx={{ width: 40, height: 40, bgcolor: 'primary.main' }}>
-                  {selectedRide.driver.name.charAt(0)}
-                </Avatar>
-                <Box>
-                  <Typography variant="body1">
-                    {selectedRide.driver.name}
-                  </Typography>
-                  {selectedRide.driver.rating && (
-                    <Rating
-                      value={selectedRide.driver.rating}
-                      readOnly
-                      precision={0.5}
-                      size="small"
-                    />
-                  )}
-                </Box>
-              </Stack>
-            </Box>
-            
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Vehicle
-              </Typography>
-              <Typography variant="body1">
-                {selectedRide.vehicle?.model || 'N/A'} 
-                {selectedRide.vehicle?.color ? ` • ${selectedRide.vehicle.color}` : ''}
-                {selectedRide.vehicle?.licensePlate ? ` • ${selectedRide.vehicle.licensePlate}` : ''}
-              </Typography>
-            </Box>
-            
-            {selectedRide.notes && (
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Notes
-                </Typography>
-                <Typography variant="body1">
-                  {selectedRide.notes}
-                </Typography>
-              </Box>
-            )}
-            
-            <Box sx={{ mt: 'auto' }}>
-              <Button 
-                variant="contained" 
-                fullWidth
-                startIcon={<PersonIcon />}
-                onClick={() => handleRequestToJoin(selectedRide)}
-              >
-                Request to Join this Ride
-              </Button>
-            </Box>
-          </Paper>
-        </Grid>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
       )}
       
-      {/* Join Request Dialog */}
-      <Dialog open={joinDialogOpen} onClose={handleCloseJoinDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Request to Join Ride</DialogTitle>
-        <DialogContent>
-          {selectedRide && (
-            <>
-              <Typography variant="subtitle1" gutterBottom>
-                {selectedRide.departure.city} to {selectedRide.destination.city}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                {formatDate(selectedRide.departureTime)} at {formatTime(selectedRide.departureTime)}
-              </Typography>
-              
-              <Divider sx={{ my: 2 }} />
-              
-              <Typography variant="body2" gutterBottom>
-                Send a message to the driver with your request:
-              </Typography>
-              
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                placeholder="Introduce yourself and explain why you want to join this ride..."
-                value={requestMessage}
-                onChange={(e) => setRequestMessage(e.target.value)}
-                sx={{ mt: 2 }}
-              />
-              
-              <Alert severity="info" sx={{ mt: 3 }}>
-                <Typography variant="body2">
-                  Your contact information will be shared with the driver only after they accept your request.
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">
+              Available Rides{' '}
+              {pagination?.totalResults > 0 && (
+                <Typography component="span" variant="body2" color="text.secondary">
+                  ({pagination.totalResults} found)
                 </Typography>
-              </Alert>
+              )}
+            </Typography>
+          </Box>
+          
+          {(!availableRides || availableRides.length === 0) ? (
+            renderEmptyState()
+          ) : (
+            <>
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                {availableRides.map(ride => (
+                  <Grid item xs={12} sm={6} md={4} key={ride._id}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <CardContent sx={{ flexGrow: 1 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                          {getRideStatusChip(ride.status)}
+                          <Typography variant="caption" color="text.secondary">
+                            {formatTimeSince(ride.requestedAt)}
+                          </Typography>
+                        </Stack>
+                        
+                        <Box sx={{ mb: 2 }}>
+                          <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
+                            <TripOriginIcon color="primary" fontSize="small" />
+                            <Typography variant="body2" noWrap title={ride.pickup?.address}>
+                              {ride.pickup?.address}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <FmdGoodIcon color="error" fontSize="small" />
+                            <Typography variant="body2" noWrap title={ride.destination?.address}>
+                              {ride.destination?.address}
+                            </Typography>
+                          </Stack>
+                        </Box>
+                        
+                        <Divider sx={{ my: 1.5 }} />
+                        
+                        <Stack direction="row" justifyContent="space-between" mb={1}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <AttachMoneyIcon fontSize="small" />
+                            <Typography variant="body1" fontWeight="bold">
+                              ₹{ride.fare?.estimatedFare?.toFixed(2)}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <DirectionsCarIcon fontSize="small" />
+                            <Typography variant="body2">
+                              {ride.rideType?.charAt(0).toUpperCase() + ride.rideType?.slice(1) || 'Economy'}
+                            </Typography>
+                          </Stack>
+                        </Stack>
+                        
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            {ride.estimatedDistance?.toFixed(1)} km
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            ~{Math.round(ride.estimatedDuration || 0)} min
+                          </Typography>
+                        </Stack>
+                      </CardContent>
+                      
+                      <CardActions sx={{ px: 2, pb: 2 }}>
+                        <Button 
+                          fullWidth 
+                          variant="contained"
+                          onClick={() => handleViewRideDetails(ride)}
+                        >
+                          View Details
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+              
+              {pagination && pagination.totalPages > 1 && (
+                <Box display="flex" justifyContent="center" my={3}>
+                  <Pagination 
+                    count={pagination.totalPages} 
+                    page={pagination.currentPage}
+                    onChange={handlePageChange}
+                    color="primary"
+                  />
+                </Box>
+              )}
             </>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseJoinDialog}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleSubmitJoinRequest}
-            disabled={requestLoading}
-            startIcon={requestLoading ? <CircularProgress size={20} /> : null}
-          >
-            Send Request
-          </Button>
-        </DialogActions>
+        </>
+      )}
+      
+      {/* Ride Details Dialog */}
+      <Dialog
+        open={rideDetailsOpen}
+        onClose={handleCloseRideDetails}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedRide && (
+          <>
+            <DialogTitle>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="h6">Ride Details</Typography>
+                <IconButton onClick={handleCloseRideDetails}>
+                  <CloseIcon />
+                </IconButton>
+              </Stack>
+            </DialogTitle>
+            
+            <DialogContent>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Route Information
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2, mb: 2 }}>
+                    <Stack spacing={2}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <TripOriginIcon color="primary" />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Pickup Location
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.pickup?.address}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <FmdGoodIcon color="error" />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Destination
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.destination?.address}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                  
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ride Details
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Status
+                        </Typography>
+                        {getRideStatusChip(selectedRide.status)}
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Ride Type
+                        </Typography>
+                        <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
+                          {selectedRide.rideType || 'Standard'}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Distance
+                        </Typography>
+                        <Typography variant="body1">
+                          {selectedRide.estimatedDistance?.toFixed(1)} km
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Duration
+                        </Typography>
+                        <Typography variant="body1">
+                          ~{Math.round(selectedRide.estimatedDuration || 0)} minutes
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Estimated Fare
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Requested
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatTimeSince(selectedRide.requestedAt)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                  
+                  {selectedRide.user && (
+                    <>
+                      <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
+                        Requester Information
+                      </Typography>
+                      
+                      <Paper sx={{ p: 2 }}>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                          <Avatar>
+                            {selectedRide.user.name?.charAt(0) || <PersonIcon />}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body1">
+                              {selectedRide.user.name}
+                            </Typography>
+                            {selectedRide.user.ratings?.average > 0 && (
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Rating 
+                                  value={selectedRide.user.ratings.average} 
+                                  precision={0.5} 
+                                  size="small" 
+                                  readOnly 
+                                />
+                                <Typography variant="body2" color="text.secondary">
+                                  ({selectedRide.user.ratings.count})
+                                </Typography>
+                              </Stack>
+                            )}
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    </>
+                  )}
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Route Map
+                  </Typography>
+                  
+                  <Paper sx={{ p: 0, overflow: 'hidden', height: 400 }}>
+                    <MapComponent
+                      markers={markers}
+                      polyline={routePolyline}
+                      center={mapCenter}
+                      zoom={10}
+                    />
+                  </Paper>
+                  
+                  <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
+                    Fare Breakdown
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2 }}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Base Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.baseFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Distance Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.distanceFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Time Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.timeFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Tax</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.tax?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 1 }} />
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body1" fontWeight="bold">
+                          Total Fare
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body1" fontWeight="bold" align="right">
+                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Grid>
+              </Grid>
+            </DialogContent>
+            
+            <DialogActions sx={{ px: 3, pb: 3 }}>
+              <Button onClick={handleCloseRideDetails} variant="outlined">
+                Close
+              </Button>
+              {user?.role === 'driver' && (
+                <Button 
+                  variant="contained" 
+                  color="primary"
+                  // Add accept ride functionality for drivers here
+                >
+                  Accept Ride
+                </Button>
+              )}
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Box>
   );

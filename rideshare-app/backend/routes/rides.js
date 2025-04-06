@@ -26,6 +26,9 @@ router.patch('/:rideId/complete', authController.restrictTo('driver'), rideContr
 router.patch('/:rideId/cancel', rideController.cancelRide);
 router.post('/:rideId/rate', rideController.rateRide);
 
+// Get all rides for the FindRide feature
+router.get('/available', rideController.getAllRides);
+
 // Get ride by ID (must be last to avoid conflicts with other routes)
 router.get('/:rideId', rideController.getRide);
 
