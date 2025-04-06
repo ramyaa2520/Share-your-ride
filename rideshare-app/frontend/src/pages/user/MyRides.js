@@ -316,6 +316,8 @@ const MyRides = () => {
     acceptJoinRequest, 
     rejectJoinRequest, 
     cancelRideRequest,
+    getUserRides,
+    getMyRideOffers,
     loading, 
     error 
   } = useRideStore();
@@ -351,7 +353,7 @@ const MyRides = () => {
         
         // Use Promise.all to fetch both sets of data concurrently
         const [rideData, offerData] = await Promise.all([
-          getRides(),
+          getUserRides(),
           getMyRideOffers()
         ]);
         
@@ -373,7 +375,7 @@ const MyRides = () => {
     };
     
     fetchData();
-  }, []);
+  }, [getUserRides, getMyRideOffers]);
   
   // Show loading state
   if (localLoading || loading) {
