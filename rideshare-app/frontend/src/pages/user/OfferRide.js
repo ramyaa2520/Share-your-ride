@@ -237,15 +237,12 @@ const OfferRide = () => {
   };
   
   const getMapCenter = () => {
-    if (formData.departureLocation && formData.departureLocation.lat) {
-      return formData.departureLocation;
+    if (departure) {
+      return departure;
+    } else if (destination) {
+      return destination;
     }
-    
-    if (formData.destinationLocation && formData.destinationLocation.lat) {
-      return formData.destinationLocation;
-    }
-    
-    return { lat: 40.7128, lng: -74.0060 }; // Default to New York City
+    return { lat: 28.6139, lng: 77.2090 }; // Default to Delhi, India
   };
   
   const validateForm = () => {

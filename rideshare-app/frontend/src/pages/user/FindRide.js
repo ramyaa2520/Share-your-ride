@@ -67,13 +67,23 @@ const FindRide = () => {
   const [requestMessage, setRequestMessage] = useState('');
   const [markers, setMarkers] = useState([]);
   const [routePolyline, setRoutePolyline] = useState(null);
-  const [mapCenter, setMapCenter] = useState({ lat: 40.7128, lng: -74.0060 });
+  const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi, India
   
   // Add pagination state
   const [page, setPage] = useState(1);
   const itemsPerPage = 6;
   const [totalPages, setTotalPages] = useState(1);
   const [paginatedRides, setPaginatedRides] = useState([]);
+  
+  const [filteredRides, setFilteredRides] = useState([]);
+  const [dateFilter, setDateFilter] = useState(null);
+  const [availableSeatsFilter, setAvailableSeatsFilter] = useState('');
+  const [priceRangeFilter, setPriceRangeFilter] = useState([0, 1000]);
+  const [queryParams, setQueryParams] = useState('');
+  const [departure, setDeparture] = useState(null);
+  const [destination, setDestination] = useState(null);
+  const [departureQuery, setDepartureQuery] = useState('');
+  const [destinationQuery, setDestinationQuery] = useState('');
   
   useEffect(() => {
     const fetchRides = async () => {

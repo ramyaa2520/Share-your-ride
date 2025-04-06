@@ -7,7 +7,7 @@ import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 const API_KEY = 'pk.c61dfc5608103dcf469a185a22842c95';
 
 const MapComponent = ({
-  center = { lat: 40.7128, lng: -74.0060 }, // Default to New York
+  center = { lat: 28.6139, lng: 77.2090 }, // Default to Delhi, India
   zoom = 12,
   markers = [],
   polyline = null,

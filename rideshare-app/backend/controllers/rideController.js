@@ -2,36 +2,36 @@ const Ride = require('../models/Ride');
 const Driver = require('../models/Driver');
 const User = require('../models/User');
 
-// Calculate fare based on distance and ride type
+// Calculate fare based on distance and ride type with Indian Rupee pricing
 const calculateFare = (distance, rideType) => {
-  let baseFare = 2.0;
-  let ratePerKm = 1.0;
+  let baseFare = 50.0; // ₹50 base fare 
+  let ratePerKm = 15.0; // ₹15 per km for Economy
   
   switch (rideType) {
     case 'economy':
-      baseFare = 2.0;
-      ratePerKm = 1.0;
+      baseFare = 50.0;
+      ratePerKm = 15.0;
       break;
     case 'comfort':
-      baseFare = 4.0;
-      ratePerKm = 1.5;
+      baseFare = 80.0;
+      ratePerKm = 20.0;
       break;
     case 'premium':
-      baseFare = 6.0;
-      ratePerKm = 2.0;
+      baseFare = 120.0;
+      ratePerKm = 30.0;
       break;
     case 'suv':
-      baseFare = 5.0;
-      ratePerKm = 1.8;
+      baseFare = 100.0;
+      ratePerKm = 25.0;
       break;
     default:
-      baseFare = 2.0;
-      ratePerKm = 1.0;
+      baseFare = 50.0;
+      ratePerKm = 15.0;
   }
 
   const distanceFare = distance * ratePerKm;
-  const timeFare = distance * 0.2; // Approximate time fare based on distance
-  const tax = (baseFare + distanceFare + timeFare) * 0.1; // 10% tax
+  const timeFare = distance * 2.5; // ₹2.5 per km time charge
+  const tax = (baseFare + distanceFare + timeFare) * 0.05; // 5% GST
   
   const totalFare = baseFare + distanceFare + timeFare + tax;
   

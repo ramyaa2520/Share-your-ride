@@ -1,5 +1,5 @@
 /**
- * Formats a date to a human-readable format (MM/DD/YYYY)
+ * Formats a date to a human-readable format (DD/MM/YYYY) - Indian format
  * @param {string|Date} dateString - Date to format
  * @returns {string} Formatted date
  */
@@ -7,9 +7,9 @@ export const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: '2-digit',
+  return date.toLocaleDateString('en-IN', {
     day: '2-digit',
+    month: '2-digit',
     year: 'numeric'
   });
 };
@@ -23,7 +23,7 @@ export const formatTime = (dateString) => {
   if (!dateString) return 'N/A';
   
   const date = new Date(dateString);
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -59,16 +59,16 @@ export const formatRelativeTime = (dateString) => {
 };
 
 /**
- * Formats a number as currency (USD)
+ * Formats a number as currency (INR)
  * @param {number} amount - Amount to format
  * @returns {string} Formatted currency
  */
 export const formatCurrency = (amount) => {
   if (amount === undefined || amount === null) return 'N/A';
   
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'INR',
     minimumFractionDigits: 2
   }).format(amount);
 };
@@ -172,14 +172,14 @@ export const formatPhoneNumber = (phoneNumber) => {
 };
 
 /**
- * Formats a distance in miles
- * @param {number} distance - Distance in miles
+ * Formats a distance in kilometers
+ * @param {number} distance - Distance in kilometers
  * @returns {string} Formatted distance
  */
 export const formatDistance = (distance) => {
   if (distance === undefined || distance === null) return 'N/A';
   
-  return `${distance.toFixed(1)} mi`;
+  return `${distance.toFixed(1)} km`;
 };
 
 /**
