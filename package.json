@@ -1,0 +1,16 @@
+{
+  "name": "rideshare-app-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd rideshare-app/frontend && npm start",
+    "install:frontend": "cd rideshare-app/frontend && npm install",
+    "build:frontend": "cd rideshare-app/frontend && npm run build"
+  },
+  "dependencies": {
+    "@googlemaps/react-wrapper": "^1.2.0",
+    "@mui/x-date-pickers": "^7.28.3",
+    "dayjs": "^1.11.13",
+    "leaflet": "^1.9.4"
+  }
+}
