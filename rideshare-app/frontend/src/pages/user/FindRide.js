@@ -89,6 +89,7 @@ const FindRide = () => {
   const [markers, setMarkers] = useState([]);
   const [routePolyline, setRoutePolyline] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 20.5937, lng: 78.9629 }); // Default to center of India
+  const [requestingRideId, setRequestingRideId] = useState(null);
   
   // Fetch rides on component mount
   useEffect(() => {
@@ -363,6 +364,25 @@ const FindRide = () => {
     </Box>
   );
   
+  const handleRequestRide = async (rideId) => {
+    try {
+      setRequestingRideId(rideId);
+      setLoading(true);
+      // Call the requestRide function from the store
+      await useRideStore.getState().requestRide(rideId);
+      // Show success message
+      alert('Ride request sent successfully!');
+      // Refresh available rides
+      fetchRides();
+    } catch (error) {
+      console.error('Error requesting ride:', error);
+      alert('Failed to request ride. Please try again.');
+    } finally {
+      setRequestingRideId(null);
+      setLoading(false);
+    }
+  };
+  
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
@@ -599,9 +619,9 @@ const FindRide = () => {
                             </Typography>
                           </Stack>
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <DirectionsCarIcon fontSize="small" />
+                            <AirlineSeatReclineNormalIcon fontSize="small" />
                             <Typography variant="body2">
-                              {ride.rideType?.charAt(0).toUpperCase() + ride.rideType?.slice(1) || 'Economy'}
+                              {ride.availableSeats || '1'} seat(s)
                             </Typography>
                           </Stack>
                         </Stack>
@@ -614,16 +634,35 @@ const FindRide = () => {
                             ~{Math.round(ride.estimatedDuration || 0)} min
                           </Typography>
                         </Stack>
+                        
+                        {ride.vehicle && (
+                          <Box mt={1}>
+                            <Typography variant="body2" color="text.secondary">
+                              {ride.vehicle.model} • {ride.vehicle.licensePlate}
+                            </Typography>
+                          </Box>
+                        )}
                       </CardContent>
                       
                       <CardActions sx={{ px: 2, pb: 2 }}>
-                        <Button 
-                          fullWidth 
-                          variant="contained"
-                          onClick={() => handleViewRideDetails(ride)}
-                        >
-                          View Details
-                        </Button>
+                        <Stack direction="row" spacing={1} width="100%">
+                          <Button 
+                            variant="outlined"
+                            sx={{ flex: 1 }}
+                            onClick={() => handleViewRideDetails(ride)}
+                          >
+                            Details
+                          </Button>
+                          <Button 
+                            variant="contained"
+                            sx={{ flex: 1 }}
+                            onClick={() => handleRequestRide(ride._id)}
+                            disabled={loading || requestingRideId === ride._id}
+                            startIcon={requestingRideId === ride._id ? <CircularProgress size={20} /> : null}
+                          >
+                            Request
+                          </Button>
+                        </Stack>
                       </CardActions>
                     </Card>
                   </Grid>
@@ -749,12 +788,35 @@ const FindRide = () => {
                       
                       <Grid item xs={6}>
                         <Typography variant="body2" color="text.secondary">
+                          Available Seats
+                        </Typography>
+                        <Typography variant="body1">
+                          {selectedRide.availableSeats || '1'}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
                           Requested
                         </Typography>
                         <Typography variant="body1">
                           {formatTimeSince(selectedRide.requestedAt)}
                         </Typography>
                       </Grid>
+                      
+                      {selectedRide.vehicle && (
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Vehicle
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.vehicle.model} • {selectedRide.vehicle.color}
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium" color="primary">
+                            {selectedRide.vehicle.licensePlate}
+                          </Typography>
+                        </Grid>
+                      )}
                     </Grid>
                   </Paper>
                   
@@ -779,7 +841,9 @@ const FindRide = () => {
                               <Stack direction="row" spacing={1} alignItems="center">
                                 <PhoneIcon fontSize="small" />
                                 <Typography variant="body2">
-                                  {selectedRide.user.phoneNumber}
+                                  <a href={`tel:${selectedRide.user.phoneNumber}`}>
+                                    {selectedRide.user.phoneNumber}
+                                  </a>
                                 </Typography>
                               </Stack>
                             )}
@@ -884,15 +948,15 @@ const FindRide = () => {
               <Button onClick={handleCloseRideDetails} variant="outlined">
                 Close
               </Button>
-              {user?.role === 'driver' && (
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  // Add accept ride functionality for drivers here
-                >
-                  Accept Ride
-                </Button>
-              )}
+              <Button 
+                variant="contained" 
+                color="primary"
+                onClick={() => handleRequestRide(selectedRide._id)}
+                disabled={loading || requestingRideId === selectedRide._id}
+                startIcon={requestingRideId === selectedRide._id ? <CircularProgress size={20} /> : null}
+              >
+                Request Ride
+              </Button>
             </DialogActions>
           </>
         )}

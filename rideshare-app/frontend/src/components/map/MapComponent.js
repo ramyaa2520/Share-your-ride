@@ -162,24 +162,50 @@ const MapComponent = ({
         polylineRef.current = null;
       }
       
-      // Draw new polyline if map exists and path is provided
-      if (mapInstanceRef.current && polyline && polyline.path && polyline.path.length > 1 && window.L) {
-        // Convert path to array of latLng
-        const path = polyline.path.map(point => [point.lat, point.lng]);
+      // Draw new polyline if map exists and polyline is provided
+      if (mapInstanceRef.current && polyline && window.L) {
+        let line;
         
-        // Create polyline
-        const line = window.L.polyline(path, {
-          color: polyline.options?.strokeColor || '#3388ff',
-          weight: polyline.options?.strokeWeight || 3,
-          opacity: polyline.options?.strokeOpacity || 1.0
-        }).addTo(mapInstanceRef.current);
+        // Handle GeoJSON format (from LocationIQ API)
+        if (polyline.type === 'Feature' || polyline.type === 'FeatureCollection' || 
+            (polyline.coordinates && Array.isArray(polyline.coordinates))) {
+          try {
+            // Create GeoJSON layer from the polyline
+            line = window.L.geoJSON(polyline, {
+              style: {
+                color: '#3388ff',
+                weight: 4,
+                opacity: 0.8
+              }
+            }).addTo(mapInstanceRef.current);
+            
+            // Fit map to the polyline bounds
+            mapInstanceRef.current.fitBounds(line.getBounds());
+          } catch (err) {
+            console.error('Error drawing GeoJSON polyline:', err);
+          }
+        }
+        // Legacy format (array of path points)
+        else if (polyline.path && polyline.path.length > 1) {
+          // Convert path to array of latLng
+          const path = polyline.path.map(point => [point.lat, point.lng]);
+          
+          // Create polyline
+          line = window.L.polyline(path, {
+            color: polyline.options?.strokeColor || '#3388ff',
+            weight: polyline.options?.strokeWeight || 3,
+            opacity: polyline.options?.strokeOpacity || 1.0
+          }).addTo(mapInstanceRef.current);
+          
+          // Fit bounds if needed
+          if (polyline.fitBounds !== false) {
+            mapInstanceRef.current.fitBounds(line.getBounds());
+          }
+        }
         
-        // Save polyline to ref
-        polylineRef.current = line;
-        
-        // Fit bounds if needed
-        if (polyline.fitBounds !== false) {
-          mapInstanceRef.current.fitBounds(line.getBounds());
+        // Save polyline to ref if created
+        if (line) {
+          polylineRef.current = line;
         }
       }
     };

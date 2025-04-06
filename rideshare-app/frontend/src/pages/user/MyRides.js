@@ -26,7 +26,8 @@ import {
   DialogActions,
   Alert,
   Badge,
-  IconButton
+  IconButton,
+  Rating
 } from '@mui/material';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -47,9 +48,13 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import EventIcon from '@mui/icons-material/Event';
 import AirlineSeatReclineNormalIcon from '@mui/icons-material/AirlineSeatReclineNormal';
+import TripOriginIcon from '@mui/icons-material/TripOrigin';
+import FmdGoodIcon from '@mui/icons-material/FmdGood';
+import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee';
 
 import { useRideStore } from '../../store/rideStore';
 import { useAuthStore } from '../../store/authStore';
+import MapComponent from '../../components/map/MapComponent';
 
 // Extend dayjs with relativeTime plugin
 dayjs.extend(relativeTime);
@@ -319,7 +324,8 @@ const MyRides = () => {
     getUserRides,
     getMyRideOffers,
     loading, 
-    error 
+    error,
+    respondToPassengerRequest
   } = useRideStore();
   
   const [tabValue, setTabValue] = useState(0);
@@ -333,6 +339,14 @@ const MyRides = () => {
   const [myOffers, setMyOffers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setError] = useState('');
+  const [selectedRide, setSelectedRide] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [cancellingRideId, setCancellingRideId] = useState(null);
+  const [respondingToRide, setRespondingToRide] = useState(null);
+  const [respondingToPassenger, setRespondingToPassenger] = useState(null);
+  const [markers, setMarkers] = useState([]);
+  const [routePolyline, setRoutePolyline] = useState(null);
+  const [mapCenter, setMapCenter] = useState({ lat: 20.5937, lng: 78.9629 });
   
   // Fetch rides and ride offers when the component mounts
   useEffect(() => {
@@ -550,6 +564,103 @@ const MyRides = () => {
     }
   };
   
+  const handleViewDetails = (ride) => {
+    setSelectedRide(ride);
+    setDetailsOpen(true);
+    
+    // Set markers for the map
+    if (ride.pickup?.location?.coordinates && ride.destination?.location?.coordinates) {
+      const pickupCoords = ride.pickup.location.coordinates;
+      const destCoords = ride.destination.location.coordinates;
+      
+      const newMarkers = [
+        {
+          id: 'pickup',
+          position: { 
+            lat: pickupCoords[1], 
+            lng: pickupCoords[0] 
+          },
+          title: 'Pickup',
+          info: ride.pickup.address || 'Pickup location'
+        },
+        {
+          id: 'destination',
+          position: { 
+            lat: destCoords[1], 
+            lng: destCoords[0] 
+          },
+          title: 'Destination',
+          info: ride.destination.address || 'Destination location'
+        }
+      ];
+      
+      setMarkers(newMarkers);
+      setMapCenter({ lat: pickupCoords[1], lng: pickupCoords[0] });
+      
+      // Calculate route
+      calculateRoute(
+        { lat: pickupCoords[1], lng: pickupCoords[0] },
+        { lat: destCoords[1], lng: destCoords[0] }
+      );
+    }
+  };
+  
+  const handleCloseDetails = () => {
+    setDetailsOpen(false);
+    setSelectedRide(null);
+    setMarkers([]);
+    setRoutePolyline(null);
+  };
+  
+  const calculateRoute = async (pickup, destination) => {
+    try {
+      const response = await fetch(
+        `https://api.locationiq.com/v1/directions/driving/` +
+        `${pickup.lng},${pickup.lat};${destination.lng},${destination.lat}` +
+        `?key=pk.c61dfc5608103dcf469a185a22842c95&steps=false&overview=full&geometries=geojson`
+      );
+      
+      const data = await response.json();
+      
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        setRoutePolyline(route.geometry);
+      } else {
+        console.error('No route found');
+        setRoutePolyline(null);
+      }
+    } catch (err) {
+      console.error('Error calculating route:', err);
+      setRoutePolyline(null);
+    }
+  };
+  
+  const handleCancelRide = async (rideId) => {
+    try {
+      setCancellingRideId(rideId);
+      await cancelRideRequest(rideId);
+      fetchRides(); // Refresh the rides list
+    } catch (error) {
+      console.error('Error cancelling ride:', error);
+    } finally {
+      setCancellingRideId(null);
+    }
+  };
+  
+  const handleRespondToRequest = async (rideId, passengerId, status) => {
+    try {
+      setRespondingToRide(rideId);
+      setRespondingToPassenger(passengerId);
+      await respondToPassengerRequest(rideId, passengerId, status);
+      fetchRides(); // Refresh the rides list
+    } catch (error) {
+      console.error('Error responding to request:', error);
+    } finally {
+      setRespondingToRide(null);
+      setRespondingToPassenger(null);
+    }
+  };
+  
   const formatDate = (dateStr) => {
     return dayjs(dateStr).format('ddd, MMM D, YYYY');
   };
@@ -558,201 +669,89 @@ const MyRides = () => {
     return dayjs(dateStr).format('h:mm A');
   };
   
-  const getPendingRequestsCount = (ride) => {
-    if (!ride.joinRequests) return 0;
-    return ride.joinRequests.filter(req => req.status === 'pending').length;
+  const formatTimeSince = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return dayjs(dateStr).fromNow();
   };
   
-  // Update price display to use Indian Rupees
-  const formatPrice = (price) => {
-    return `₹${Number(price).toFixed(2)}`;
+  const getRideStatusChip = (status) => {
+    let color = 'default';
+    let label = status;
+    
+    switch (status) {
+      case 'searching_driver':
+        color = 'info';
+        label = 'Looking for traveler';
+        break;
+      case 'driver_assigned':
+        color = 'primary';
+        label = 'Traveler assigned';
+        break;
+      case 'driver_arrived':
+        color = 'secondary';
+        label = 'Traveler arrived';
+        break;
+      case 'requested':
+        color = 'warning';
+        label = 'Requested';
+        break;
+      case 'in_progress':
+        color = 'warning';
+        label = 'In progress';
+        break;
+      case 'completed':
+        color = 'success';
+        label = 'Completed';
+        break;
+      case 'cancelled':
+        color = 'error';
+        label = 'Cancelled';
+        break;
+      case 'pending':
+        color = 'warning';
+        label = 'Pending';
+        break;
+      case 'accepted':
+        color = 'success';
+        label = 'Accepted';
+        break;
+      case 'rejected':
+        color = 'error';
+        label = 'Rejected';
+        break;
+      default:
+        color = 'default';
+        label = status;
+    }
+    
+    return <Chip size="small" color={color} label={label} />;
   };
   
-  // Render the offered rides
-  const renderOfferedRides = () => {
-    if (loading && (!myOffers || !myOffers.length)) {
-      return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
-          <CircularProgress />
-        </Box>
-      );
+  // Filter rides based on tab
+  const getFilteredRides = () => {
+    if (!rides || !rides.length) return [];
+    
+    switch (tabValue) {
+      case 0: // All rides
+        return rides;
+      case 1: // Active rides (requested, assigned, in progress)
+        return rides.filter(ride => 
+          ['requested', 'searching_driver', 'driver_assigned', 'driver_arrived', 'in_progress'].includes(ride.status)
+        );
+      case 2: // Completed rides
+        return rides.filter(ride => ride.status === 'completed');
+      case 3: // Cancelled rides
+        return rides.filter(ride => ride.status === 'cancelled');
+      default:
+        return rides;
     }
-    
-    if (!myOffers || !myOffers.length) {
-      return (
-        <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="h6" gutterBottom>
-            You haven't offered any rides yet
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 3 }}>
-            Share your journey with others by offering a ride.
-          </Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={() => navigate('/offer-ride')}
-          >
-            Offer a Ride
-          </Button>
-        </Paper>
-      );
-    }
-    
-    console.log('Rendering offered rides:', myOffers);
-    
-    return (
-      <Grid container spacing={3}>
-        {myOffers.map((ride) => (
-          <Grid item xs={12} key={ride._id || ride.id}>
-            <Card elevation={3}>
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Stack direction="row" justifyContent="space-between">
-                      <Typography variant="h6" fontWeight="medium" color="text.primary">
-                        {ride.departureCity || (ride.departure && ride.departure.city) || 'Unknown'} → {ride.destinationCity || (ride.destination && ride.destination.city) || 'Unknown'}
-                      </Typography>
-                      
-                      <Badge 
-                        badgeContent={getPendingRequestsCount(ride)} 
-                        color="warning"
-                        showZero={false}
-                      >
-                        <Chip 
-                          label={<Typography variant="h6" color="primary" fontWeight="bold">
-                            {formatPrice(ride.price || (ride.fare && ride.fare.estimatedFare) || 0)}
-                          </Typography>} 
-                          color="primary" 
-                          variant="outlined"
-                        />
-                      </Badge>
-                    </Stack>
-                    
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                      <AccessTimeIcon fontSize="small" color="action" />
-                      <Typography variant="body2">
-                        {formatDate(ride.departureTime)} at {formatTime(ride.departureTime)}
-                      </Typography>
-                    </Stack>
-                    
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                      <LocationOnIcon fontSize="small" color="action" />
-                      <Typography variant="body2" noWrap>
-                        From: {(ride.departure && ride.departure.address) || ride.departureAddress || 'Unknown location'}
-                      </Typography>
-                    </Stack>
-                    
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                      <LocationOnIcon fontSize="small" color="action" />
-                      <Typography variant="body2" noWrap>
-                        To: {(ride.destination && ride.destination.address) || ride.destinationAddress || 'Unknown location'}
-                      </Typography>
-                    </Stack>
-                    
-                    <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                      <Typography variant="body2">
-                        <strong>Available Seats:</strong> {ride.availableSeats || 0}
-                      </Typography>
-                      <Typography variant="body2">
-                        <strong>Vehicle:</strong> {ride.vehicle?.model || 'N/A'} {ride.vehicle?.color ? `(${ride.vehicle.color})` : ''}
-                      </Typography>
-                    </Stack>
-                  </Grid>
-                  
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                      Join Requests ({ride.joinRequests?.length || 0})
-                    </Typography>
-                    
-                    {!ride.joinRequests || ride.joinRequests.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">
-                        No join requests yet.
-                      </Typography>
-                    ) : (
-                      <DisplayJoinRequests 
-                        requests={ride.joinRequests}
-                        rideOffer={ride}
-                        onAccept={handleOpenAcceptDialog}
-                        onReject={handleOpenRejectDialog}
-                      />
-                    )}
-                  </Grid>
-                </Grid>
-              </CardContent>
-              <CardActions sx={{ p: 2, pt: 0 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => handleViewRideDetails(ride._id || ride.id)}
-                >
-                  View Details
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-    );
   };
   
-  // Render the requested rides
-  const renderRequestedRides = () => {
-    if (loading && (!myRequestedRides || !myRequestedRides.length)) {
-      return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
-          <CircularProgress />
-        </Box>
-      );
-    }
-    
-    if (!myRequestedRides || !myRequestedRides.length) {
-      return (
-        <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="h6" gutterBottom>
-            You haven't requested any rides yet
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 3 }}>
-            Find a ride that matches your travel plans.
-          </Typography>
-          <Button 
-            variant="contained" 
-            color="primary"
-            onClick={() => navigate('/find-ride')}
-          >
-            Find a Ride
-          </Button>
-        </Paper>
-      );
-    }
-    
-    return (
-      <Grid container spacing={3}>
-        {myRequestedRides.map((request) => (
-          <Grid item xs={12} md={6} key={request.id}>
-            <RideCard 
-              ride={request.ride}
-              type="userRequest"
-              onAction={handleViewRideDetails}
-              actionText="View Ride Details"
-              actionIcon={<LocationOnIcon />}
-              secondaryAction={
-                request.status === 'pending' && (
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    onClick={() => handleOpenCancelDialog(request)}
-                  >
-                    Cancel Request
-                  </Button>
-                )
-              }
-              requestStatus={request.status}
-            />
-          </Grid>
-        ))}
-      </Grid>
-    );
+  const filteredRides = getFilteredRides();
+  
+  // Handle rides with passenger requests (for ride owners)
+  const hasPassengerRequests = (ride) => {
+    return ride.passengers && ride.passengers.some(p => p.status === 'pending');
   };
   
   return (
@@ -769,83 +768,477 @@ const MyRides = () => {
           textColor="primary"
           variant="fullWidth"
         >
-          <Tab label="Rides I'm Offering" />
-          <Tab label="Rides I've Requested" />
+          <Tab label="All Rides" />
+          <Tab label="Active" />
+          <Tab label="Completed" />
+          <Tab label="Cancelled" />
         </Tabs>
       </Paper>
       
-      <TabPanel value={tabValue} index={0}>
-        {renderOfferedRides()}
-      </TabPanel>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
       
-      <TabPanel value={tabValue} index={1}>
-        {renderRequestedRides()}
-      </TabPanel>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : filteredRides.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6">No rides found</Typography>
+          <Typography variant="body1" color="text.secondary">
+            You don't have any {tabValue === 0 ? '' : tabValue === 1 ? 'active' : tabValue === 2 ? 'completed' : 'cancelled'} rides yet.
+          </Typography>
+        </Paper>
+      ) : (
+        <Grid container spacing={3}>
+          {filteredRides.map(ride => (
+            <Grid item xs={12} md={6} key={ride._id || ride.id}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                    {getRideStatusChip(ride.status)}
+                    <Typography variant="caption" color="text.secondary">
+                      {formatTimeSince(ride.requestedAt)}
+                    </Typography>
+                  </Stack>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
+                      <TripOriginIcon color="primary" fontSize="small" />
+                      <Typography variant="body2" noWrap title={ride.pickup?.address}>
+                        {ride.pickup?.address}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <FmdGoodIcon color="error" fontSize="small" />
+                      <Typography variant="body2" noWrap title={ride.destination?.address}>
+                        {ride.destination?.address}
+                      </Typography>
+                    </Stack>
+                  </Box>
+                  
+                  <Divider sx={{ my: 1.5 }} />
+                  
+                  <Stack direction="row" justifyContent="space-between" mb={1}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CurrencyRupeeIcon fontSize="small" />
+                      <Typography variant="body1" fontWeight="bold">
+                        ₹{ride.fare?.estimatedFare?.toFixed(2)}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <AirlineSeatReclineNormalIcon fontSize="small" />
+                      <Typography variant="body2">
+                        {ride.availableSeats || '1'} seat(s)
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                  
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">
+                      {ride.estimatedDistance?.toFixed(1)} km
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      ~{Math.round(ride.estimatedDuration || 0)} min
+                    </Typography>
+                  </Stack>
+                  
+                  {/* Display pending passenger requests notification */}
+                  {hasPassengerRequests(ride) && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      {ride.passengers.filter(p => p.status === 'pending').length} pending request(s)
+                    </Alert>
+                  )}
+                </CardContent>
+                
+                <CardActions sx={{ px: 2, pb: 2 }}>
+                  <Stack direction="row" spacing={1} width="100%">
+                    <Button 
+                      variant="outlined"
+                      sx={{ flex: 1 }}
+                      onClick={() => handleViewDetails(ride)}
+                    >
+                      Details
+                    </Button>
+                    
+                    {/* Only show cancel button for pending/active rides */}
+                    {['requested', 'searching_driver', 'driver_assigned'].includes(ride.status) && (
+                      <Button 
+                        variant="contained"
+                        color="error"
+                        sx={{ flex: 1 }}
+                        onClick={() => handleCancelRide(ride._id || ride.id)}
+                        disabled={loading || cancellingRideId === (ride._id || ride.id)}
+                        startIcon={cancellingRideId === (ride._id || ride.id) ? <CircularProgress size={20} /> : <CancelIcon />}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </Stack>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
       
-      {/* Accept Request Dialog */}
-      <Dialog open={acceptDialogOpen} onClose={handleCloseDialogs}>
-        <DialogTitle>Accept Join Request</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1">
-            Are you sure you want to accept {selectedRequest?.user?.name}'s request for {selectedRequest?.seats} {selectedRequest?.seats === 1 ? 'seat' : 'seats'}?
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 2 }}>
-            Your contact information will be shared with the passenger once you accept.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialogs}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            color="success" 
-            onClick={handleAcceptRequest}
-            disabled={actionLoading}
-          >
-            {actionLoading ? 'Processing...' : 'Accept Request'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Reject Request Dialog */}
-      <Dialog open={rejectDialogOpen} onClose={handleCloseDialogs}>
-        <DialogTitle>Reject Join Request</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1">
-            Are you sure you want to reject {selectedRequest?.user?.name}'s request?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialogs}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            color="error" 
-            onClick={handleRejectRequest}
-            disabled={actionLoading}
-          >
-            {actionLoading ? 'Processing...' : 'Reject Request'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Cancel Request Dialog */}
-      <Dialog open={cancelDialogOpen} onClose={handleCloseDialogs}>
-        <DialogTitle>Cancel Request</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1">
-            Are you sure you want to cancel your request for this ride?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialogs}>No, Keep Request</Button>
-          <Button 
-            variant="contained" 
-            color="error" 
-            onClick={handleCancelRequest}
-            disabled={actionLoading}
-          >
-            {actionLoading ? 'Canceling...' : 'Yes, Cancel Request'}
-          </Button>
-        </DialogActions>
+      {/* Ride Details Dialog */}
+      <Dialog
+        open={detailsOpen}
+        onClose={handleCloseDetails}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedRide && (
+          <>
+            <DialogTitle>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="h6">Ride Details</Typography>
+                <IconButton onClick={handleCloseDetails}>
+                  <CloseIcon />
+                </IconButton>
+              </Stack>
+            </DialogTitle>
+            
+            <DialogContent>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Route Information
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2, mb: 2 }}>
+                    <Stack spacing={2}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <TripOriginIcon color="primary" />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Pickup Location
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.pickup?.address}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <FmdGoodIcon color="error" />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Destination
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.destination?.address}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                  
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ride Details
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Status
+                        </Typography>
+                        {getRideStatusChip(selectedRide.status)}
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Ride Type
+                        </Typography>
+                        <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
+                          {selectedRide.rideType || 'Standard'}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Distance
+                        </Typography>
+                        <Typography variant="body1">
+                          {selectedRide.estimatedDistance?.toFixed(1)} km
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Duration
+                        </Typography>
+                        <Typography variant="body1">
+                          ~{Math.round(selectedRide.estimatedDuration || 0)} minutes
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Estimated Fare
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Available Seats
+                        </Typography>
+                        <Typography variant="body1">
+                          {selectedRide.availableSeats || '1'}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Requested
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatTimeSince(selectedRide.requestedAt)}
+                        </Typography>
+                      </Grid>
+                      
+                      {selectedRide.vehicle && (
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Vehicle
+                          </Typography>
+                          <Typography variant="body1">
+                            {selectedRide.vehicle.model} • {selectedRide.vehicle.color}
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium" color="primary">
+                            {selectedRide.vehicle.licensePlate}
+                          </Typography>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Paper>
+                  
+                  {/* Show requestor info if this is not user's ride */}
+                  {selectedRide.user && selectedRide.user._id !== (localStorage.getItem('userId') || '') && (
+                    <>
+                      <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
+                        Requester Information
+                      </Typography>
+                      
+                      <Paper sx={{ p: 2 }}>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                          <Avatar>
+                            {selectedRide.user.name?.charAt(0) || <PersonIcon />}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body1">
+                              {selectedRide.user.name}
+                            </Typography>
+                            
+                            {/* Display phone number if available */}
+                            {selectedRide.user.phoneNumber && (
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <PhoneIcon fontSize="small" />
+                                <Typography variant="body2">
+                                  <a href={`tel:${selectedRide.user.phoneNumber}`}>
+                                    {selectedRide.user.phoneNumber}
+                                  </a>
+                                </Typography>
+                              </Stack>
+                            )}
+                            
+                            {selectedRide.user.ratings?.average > 0 && (
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Rating 
+                                  value={selectedRide.user.ratings.average} 
+                                  precision={0.5} 
+                                  size="small" 
+                                  readOnly 
+                                />
+                                <Typography variant="body2" color="text.secondary">
+                                  ({selectedRide.user.ratings.count})
+                                </Typography>
+                              </Stack>
+                            )}
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    </>
+                  )}
+                  
+                  {/* Show passenger requests if this is user's ride */}
+                  {selectedRide.passengers && selectedRide.passengers.length > 0 && (
+                    <>
+                      <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
+                        Passenger Requests
+                      </Typography>
+                      
+                      {selectedRide.passengers.map(passenger => (
+                        <Paper sx={{ p: 2, mb: 2 }} key={passenger.user._id || passenger.user}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Stack direction="row" spacing={2} alignItems="center">
+                              <Avatar>
+                                {passenger.user.name?.charAt(0) || <PersonIcon />}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="body1">
+                                  {passenger.user.name}
+                                </Typography>
+                                
+                                {/* Display phone number if available */}
+                                {passenger.user.phoneNumber && (
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <PhoneIcon fontSize="small" />
+                                    <Typography variant="body2">
+                                      <a href={`tel:${passenger.user.phoneNumber}`}>
+                                        {passenger.user.phoneNumber}
+                                      </a>
+                                    </Typography>
+                                  </Stack>
+                                )}
+                                
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  <AccessTimeIcon fontSize="small" />
+                                  <Typography variant="caption" color="text.secondary">
+                                    Requested {formatTimeSince(passenger.requestedAt)}
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                            </Stack>
+                            
+                            {getRideStatusChip(passenger.status)}
+                          </Stack>
+                          
+                          {/* Show accept/reject buttons for pending requests */}
+                          {passenger.status === 'pending' && (
+                            <Stack direction="row" spacing={1} mt={2} justifyContent="flex-end">
+                              <Button
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                onClick={() => handleRespondToRequest(selectedRide._id, passenger.user._id, 'rejected')}
+                                disabled={respondingToRide === selectedRide._id && respondingToPassenger === passenger.user._id}
+                                startIcon={<CancelIcon />}
+                              >
+                                Reject
+                              </Button>
+                              <Button
+                                variant="contained"
+                                color="success"
+                                size="small"
+                                onClick={() => handleRespondToRequest(selectedRide._id, passenger.user._id, 'accepted')}
+                                disabled={respondingToRide === selectedRide._id && respondingToPassenger === passenger.user._id}
+                                startIcon={<CheckCircleIcon />}
+                              >
+                                Accept
+                              </Button>
+                            </Stack>
+                          )}
+                        </Paper>
+                      ))}
+                    </>
+                  )}
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Route Map
+                  </Typography>
+                  
+                  <Paper sx={{ p: 0, overflow: 'hidden', height: 400 }}>
+                    <MapComponent
+                      markers={markers}
+                      polyline={routePolyline}
+                      center={mapCenter}
+                      zoom={10}
+                    />
+                  </Paper>
+                  
+                  <Typography variant="subtitle1" fontWeight="bold" mt={2} gutterBottom>
+                    Fare Breakdown
+                  </Typography>
+                  
+                  <Paper sx={{ p: 2 }}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Base Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.baseFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Distance Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.distanceFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Time Fare</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.timeFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body2">Tax</Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" align="right">
+                          ₹{selectedRide.fare?.breakdown?.tax?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 1 }} />
+                      </Grid>
+                      
+                      <Grid item xs={8}>
+                        <Typography variant="body1" fontWeight="bold">
+                          Total Fare
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body1" fontWeight="bold" align="right">
+                          ₹{selectedRide.fare?.estimatedFare?.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Grid>
+              </Grid>
+            </DialogContent>
+            
+            <DialogActions sx={{ px: 3, pb: 3 }}>
+              <Button onClick={handleCloseDetails} variant="outlined">
+                Close
+              </Button>
+              
+              {/* Show cancel button for active rides */}
+              {['requested', 'searching_driver', 'driver_assigned'].includes(selectedRide.status) && (
+                <Button 
+                  variant="contained" 
+                  color="error"
+                  onClick={() => handleCancelRide(selectedRide._id || selectedRide.id)}
+                  disabled={loading || cancellingRideId === (selectedRide._id || selectedRide.id)}
+                  startIcon={cancellingRideId === (selectedRide._id || selectedRide.id) ? <CircularProgress size={20} /> : <CancelIcon />}
+                >
+                  Cancel Ride
+                </Button>
+              )}
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Box>
   );

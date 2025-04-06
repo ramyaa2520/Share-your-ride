@@ -58,6 +58,7 @@ export const useRideStore = create((set, get) => ({
     totalResults: 0
   },
   loading: false,
+  requesting: false, // Specific state for ride requests
   error: null,
   success: null,
 
@@ -256,33 +257,63 @@ export const useRideStore = create((set, get) => ({
   },
 
   // Request a ride
-  requestRide: async (rideData) => {
+  requestRide: async (rideId) => {
     try {
-      set({ loading: true });
+      set({ requesting: true, error: null });
+      console.log(`Requesting ride: ${rideId}`);
       
-      const token = localStorage.getItem('token');
+      // For development without backend
+      if (isDevelopmentWithoutBackend()) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const userData = JSON.parse(localStorage.getItem('userData'));
+        
+        // Get the ride from the current rides
+        const ride = get().rides.find(r => r._id === rideId || r.id === rideId);
+        
+        if (!ride) {
+          throw new Error('Ride not found');
+        }
+        
+        // Create request
+        const request = {
+          id: generateId(),
+          rideId: ride._id || ride.id,
+          userId: userData?.id,
+          status: 'pending',
+          requestedAt: new Date().toISOString()
+        };
+        
+        // Update my requested rides
+        set(state => ({
+          myRequestedRides: [...state.myRequestedRides, {
+            ...request,
+            ride
+          }],
+          requesting: false
+        }));
+        
+        toast.success('Ride request sent successfully!');
+        return request;
+      }
       
-      const response = await api.post('/rides', rideData);
-
-      const newRide = response.data.data.ride;
+      const response = await api.post(`/rides/${rideId}/request`);
       
-      set(state => ({
-        rides: [newRide, ...state.rides],
-        currentRide: newRide,
-        loading: false,
-        error: null
-      }));
-
-      toast.success('Ride requested successfully');
-      return newRide;
+      if (response.data.status === 'success') {
+        set({ requesting: false });
+        toast.success('Ride request sent successfully!');
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to request ride');
+      }
     } catch (error) {
       console.error('Error requesting ride:', error);
-      set({
-        loading: false,
-        error: error.response?.data?.message || 'Failed to request ride'
+      set({ 
+        error: error.response?.data?.message || error.message || 'Failed to request ride', 
+        requesting: false 
       });
-      toast.error(error.response?.data?.message || 'Failed to request ride');
-      return null;
+      toast.error(error.response?.data?.message || error.message || 'Failed to request ride');
+      throw error;
     }
   },
 
@@ -1243,66 +1274,29 @@ export const useRideStore = create((set, get) => ({
   },
   
   // Cancel a ride request
-  cancelRideRequest: async (rideId, requestId) => {
+  cancelRideRequest: async (rideId, reason) => {
     try {
-      set({ loading: true });
+      set({ loading: true, error: null });
       
-      // Development mode simulation
-      if (isDevelopmentWithoutBackend()) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Get stored requests
-        const storedRequests = localStorage.getItem('joinRequests');
-        const requests = storedRequests ? JSON.parse(storedRequests) : [];
-        
-        // Update the request status to cancelled
-        const updatedRequests = requests.map(request => {
-          if (request.id === requestId) {
-            return { ...request, status: 'cancelled' };
-          }
-          return request;
-        });
-        
-        // Save to localStorage
-        localStorage.setItem('joinRequests', JSON.stringify(updatedRequests));
-        
-        // Update the myRequestedRides in state
-        const myRequestedRides = get().myRequestedRides.map(request => {
-          if (request.id === requestId) {
-            return { ...request, status: 'cancelled' };
-          }
-          return request;
-        });
-        
-        set({
-          myRequestedRides,
-          loading: false,
-          error: null
-        });
-        
-        toast.success('Request cancelled successfully');
-        return true;
+      const response = await api.post(`/rides/${rideId}/cancel`, { 
+        reason: reason || 'Request cancelled by user' 
+      });
+      
+      if (response.data.status === 'success') {
+        set({ loading: false });
+        toast.success('Ride request cancelled successfully!');
+        return response.data.data;
+      } else {
+        throw new Error('Failed to cancel ride request');
       }
-      
-      const token = localStorage.getItem('token');
-      
-      await api.post(`/rides/offers/${rideId}/requests/${requestId}/cancel`);
-      
-      // Refresh the ride requests
-      get().getMyRequestedRides();
-      
-      set({ loading: false, error: null });
-      toast.success('Request cancelled successfully');
-      return true;
     } catch (error) {
-      console.error('Error cancelling request:', error);
-      set({
-        loading: false,
-        error: error.response?.data?.message || 'Failed to cancel request'
+      console.error('Error cancelling ride request:', error);
+      set({ 
+        error: error.response?.data?.message || error.message || 'Failed to cancel ride request', 
+        loading: false 
       });
       toast.error(error.response?.data?.message || 'Failed to cancel request');
-      return false;
+      throw error;
     }
   },
   
@@ -1616,5 +1610,10 @@ export const useRideStore = create((set, get) => ({
       });
       throw error;
     }
+  },
+
+  // Generate a unique ID for development mode
+  generateId: () => {
+    return `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 })); 
