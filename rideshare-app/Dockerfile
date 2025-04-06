@@ -4,13 +4,13 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy backend package.json and package-lock.json
-COPY ./backend/package*.json ./
+COPY ./rideshare-app/backend/package*.json ./
 
 # Install backend dependencies
 RUN npm install --production
 
 # Copy backend files
-COPY ./backend/ ./
+COPY ./rideshare-app/backend/ ./
 
 # Set environment variables
 ENV NODE_ENV=production
