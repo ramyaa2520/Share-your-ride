@@ -550,19 +550,34 @@ exports.rateRide = async (req, res) => {
 // Get user's rides
 exports.getUserRides = async (req, res) => {
   try {
+    console.log('Fetching rides for user:', req.user._id);
+    
     const rides = await Ride.find({ user: req.user._id }).sort({ requestedAt: -1 });
+    
+    console.log(`Found ${rides.length} rides for user ${req.user._id}`);
+    
+    // Add ID field for frontend compatibility
+    const processedRides = rides.map(ride => {
+      const rideObj = ride.toObject();
+      if (rideObj._id && !rideObj.id) {
+        rideObj.id = rideObj._id.toString();
+      }
+      return rideObj;
+    });
     
     res.status(200).json({
       status: 'success',
-      results: rides.length,
+      results: processedRides.length,
       data: {
-        rides
+        rides: processedRides
       }
     });
-  } catch (err) {
-    res.status(400).json({
-      status: 'fail',
-      message: err.message
+  } catch (error) {
+    console.error('Error getting user rides:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error retrieving rides',
+      error: error.message
     });
   }
 };
@@ -814,11 +829,20 @@ exports.getMyRideOffers = async (req, res) => {
     
     console.log(`Found ${rides.length} ride offers for user ${req.user._id}`);
     
+    // Add ID field for frontend compatibility
+    const processedRides = rides.map(ride => {
+      const rideObj = ride.toObject();
+      if (rideObj._id && !rideObj.id) {
+        rideObj.id = rideObj._id.toString();
+      }
+      return rideObj;
+    });
+    
     return res.status(200).json({
       status: 'success',
-      results: rides.length,
+      results: processedRides.length,
       data: {
-        rides
+        rides: processedRides
       }
     });
   } catch (error) {

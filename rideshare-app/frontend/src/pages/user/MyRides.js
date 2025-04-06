@@ -338,6 +338,7 @@ const MyRides = () => {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
+      setLocalLoading(true); // Set both loading states
       setError('');
       
       try {
@@ -346,6 +347,7 @@ const MyRides = () => {
         if (!token) {
           setError('You must be logged in to view your rides');
           setIsLoading(false);
+          setLocalLoading(false);
           return;
         }
         
@@ -357,12 +359,26 @@ const MyRides = () => {
           getMyRideOffers()
         ]);
         
+        console.log('Ride data received:', rideData);
+        console.log('Offer data received:', offerData);
+        
         // Sort rides and offers by departure time (most recent first)
-        const sortedRides = rideData?.sort((a, b) => new Date(b.departureTime) - new Date(a.departureTime)) || [];
-        const sortedOffers = offerData?.sort((a, b) => new Date(b.departureTime) - new Date(a.departureTime)) || [];
+        const sortedRides = Array.isArray(rideData) ? 
+          rideData.sort((a, b) => new Date(b.departureTime || 0) - new Date(a.departureTime || 0)) : 
+          [];
+          
+        const sortedOffers = Array.isArray(offerData) ? 
+          offerData.sort((a, b) => new Date(b.departureTime || 0) - new Date(a.departureTime || 0)) : 
+          [];
         
         setRides(sortedRides);
         setMyOffers(sortedOffers);
+        
+        // Update the store's myOfferedRides if needed
+        if (sortedOffers.length > 0 && (!myOfferedRides || myOfferedRides.length === 0)) {
+          // This is a side effect, but it ensures the data is consistently available
+          getMyOfferedRides();
+        }
         
         console.log(`Fetched ${sortedRides.length} rides and ${sortedOffers.length} offers`);
       } catch (err) {
@@ -371,14 +387,15 @@ const MyRides = () => {
         toast.error('Error loading rides');
       } finally {
         setIsLoading(false);
+        setLocalLoading(false);
       }
     };
     
     fetchData();
-  }, [getUserRides, getMyRideOffers]);
+  }, [getUserRides, getMyRideOffers, getMyOfferedRides, myOfferedRides]);
   
   // Show loading state
-  if (localLoading || loading) {
+  if (isLoading) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 8 }}>
         <CircularProgress size={60} />
@@ -422,7 +439,23 @@ const MyRides = () => {
   };
   
   const handleViewRideDetails = (rideId) => {
-    navigate(`/rides/${rideId}`);
+    console.log('Viewing ride details for ID:', rideId);
+    // Ensure we have a valid ID before navigating
+    if (!rideId) {
+      console.error('Missing ride ID');
+      return;
+    }
+    
+    // Let's directly use the ride ID we have
+    const actualId = typeof rideId === 'object' ? (rideId._id || rideId.id) : rideId;
+    
+    // Navigate with the token preserved
+    navigate(`/rides/${actualId}`, { 
+      state: { 
+        previousPage: 'myrides', 
+        preserveAuth: true 
+      } 
+    });
   };
   
   const handleOpenAcceptDialog = (request) => {
@@ -511,7 +544,7 @@ const MyRides = () => {
   
   // Render the offered rides
   const renderOfferedRides = () => {
-    if (loading && (!myOfferedRides || !myOfferedRides.length)) {
+    if (loading && (!myOffers || !myOffers.length)) {
       return (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
           <CircularProgress />
@@ -519,7 +552,7 @@ const MyRides = () => {
       );
     }
     
-    if (!myOfferedRides || !myOfferedRides.length) {
+    if (!myOffers || !myOffers.length) {
       return (
         <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" gutterBottom>
@@ -539,17 +572,19 @@ const MyRides = () => {
       );
     }
     
+    console.log('Rendering offered rides:', myOffers);
+    
     return (
       <Grid container spacing={3}>
-        {myOfferedRides.map((ride) => (
-          <Grid item xs={12} key={ride.id}>
+        {myOffers.map((ride) => (
+          <Grid item xs={12} key={ride._id || ride.id}>
             <Card elevation={3}>
               <CardContent>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={6}>
                     <Stack direction="row" justifyContent="space-between">
                       <Typography variant="h6" fontWeight="medium" color="text.primary">
-                        {ride.departureAddress || ride.departure.address} → {ride.destinationAddress || ride.destination.address}
+                        {ride.departureCity || (ride.departure && ride.departure.city) || 'Unknown'} → {ride.destinationCity || (ride.destination && ride.destination.city) || 'Unknown'}
                       </Typography>
                       
                       <Badge 
@@ -558,7 +593,9 @@ const MyRides = () => {
                         showZero={false}
                       >
                         <Chip 
-                          label={<Typography variant="h6" color="primary" fontWeight="bold">{formatPrice(ride.price)}</Typography>} 
+                          label={<Typography variant="h6" color="primary" fontWeight="bold">
+                            {formatPrice(ride.price || (ride.fare && ride.fare.estimatedFare) || 0)}
+                          </Typography>} 
                           color="primary" 
                           variant="outlined"
                         />
@@ -575,20 +612,20 @@ const MyRides = () => {
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
                       <LocationOnIcon fontSize="small" color="action" />
                       <Typography variant="body2" noWrap>
-                        From: {ride.departure.address}
+                        From: {(ride.departure && ride.departure.address) || ride.departureAddress || 'Unknown location'}
                       </Typography>
                     </Stack>
                     
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
                       <LocationOnIcon fontSize="small" color="action" />
                       <Typography variant="body2" noWrap>
-                        To: {ride.destination.address}
+                        To: {(ride.destination && ride.destination.address) || ride.destinationAddress || 'Unknown location'}
                       </Typography>
                     </Stack>
                     
                     <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                       <Typography variant="body2">
-                        <strong>Available Seats:</strong> {ride.availableSeats}
+                        <strong>Available Seats:</strong> {ride.availableSeats || 0}
                       </Typography>
                       <Typography variant="body2">
                         <strong>Vehicle:</strong> {ride.vehicle?.model || 'N/A'} {ride.vehicle?.color ? `(${ride.vehicle.color})` : ''}
@@ -620,7 +657,7 @@ const MyRides = () => {
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => handleViewRideDetails(ride.id)}
+                  onClick={() => handleViewRideDetails(ride._id || ride.id)}
                 >
                   View Details
                 </Button>

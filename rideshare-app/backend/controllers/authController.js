@@ -34,16 +34,24 @@ exports.signup = async (req, res, next) => {
   try {
     console.log('Signup request received:', req.body);
     
-    // Clean up phone number field to avoid duplicate key errors with null/empty values
-    if (!req.body.phoneNumber || req.body.phoneNumber.trim() === '') {
-      delete req.body.phoneNumber;
+    // Clean up phone number field
+    let phoneNumber = req.body.phoneNumber;
+    if (phoneNumber) {
+      // Remove any non-digit characters
+      phoneNumber = phoneNumber.replace(/\D/g, '');
+      // If after cleanup it's empty or not 10 digits, set to null
+      if (phoneNumber.length !== 10) {
+        phoneNumber = null;
+      }
+    } else {
+      phoneNumber = null;
     }
     
     const newUser = await User.create({
       name: req.body.name,
       email: req.body.email,
       password: req.body.password,
-      phoneNumber: req.body.phoneNumber,
+      phoneNumber: phoneNumber,
       role: req.body.role || 'user'
     });
     
@@ -74,6 +82,15 @@ exports.signup = async (req, res, next) => {
       return res.status(400).json({
         status: 'error',
         message: 'This phone number is already registered. Please use a different phone number or leave it blank.'
+      });
+    }
+    
+    // Handle validation errors more gracefully
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({
+        status: 'error',
+        message: messages.join('. ')
       });
     }
     
