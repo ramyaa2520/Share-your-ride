@@ -867,7 +867,9 @@ exports.getAllRides = async (req, res) => {
       minFare,
       maxFare,
       status,
-      sortBy = 'requestedAt'
+      sortBy = 'requestedAt',
+      date,
+      seats
     } = req.query;
 
     const pageNum = parseInt(page, 10);
@@ -927,6 +929,26 @@ exports.getAllRides = async (req, res) => {
       if (maxFare) query['fare.estimatedFare'].$lte = parseFloat(maxFare);
     }
 
+    // Filter by date if provided
+    if (date) {
+      const searchDate = new Date(date);
+      const nextDay = new Date(searchDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      query.requestedAt = {
+        $gte: searchDate,
+        $lt: nextDay
+      };
+    }
+
+    // Filter by number of seats if provided
+    if (seats) {
+      const seatsNum = parseInt(seats, 10);
+      if (!isNaN(seatsNum) && seatsNum > 0) {
+        query.availableSeats = { $gte: seatsNum };
+      }
+    }
+
     // Exclude rides created by the current user
     query.user = { $ne: req.user._id };
 
@@ -955,7 +977,7 @@ exports.getAllRides = async (req, res) => {
       .limit(limitNum)
       .populate({
         path: 'user',
-        select: 'name profilePicture ratings'
+        select: 'name phoneNumber profilePicture ratings'
       });
 
     // Calculate total pages

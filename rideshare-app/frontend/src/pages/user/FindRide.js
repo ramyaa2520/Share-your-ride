@@ -52,6 +52,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import DriveEtaIcon from '@mui/icons-material/DriveEta';
 import TripOriginIcon from '@mui/icons-material/TripOrigin';
 import FmdGoodIcon from '@mui/icons-material/FmdGood';
+import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee';
 
 import { useRideStore } from '../../store/rideStore';
 import PlaceAutocomplete from '../../components/map/PlaceAutocomplete';
@@ -77,7 +78,9 @@ const FindRide = () => {
     destination: null,
     minFare: '',
     maxFare: '',
-    sortBy: 'requestedAt'
+    sortBy: 'requestedAt',
+    date: null,
+    seats: ''
   });
   
   const [filterOpen, setFilterOpen] = useState(true);
@@ -117,6 +120,14 @@ const FindRide = () => {
       
       if (searchParams.maxFare) {
         queryParams.maxFare = searchParams.maxFare;
+      }
+      
+      if (searchParams.date) {
+        queryParams.date = searchParams.date.format('YYYY-MM-DD');
+      }
+      
+      if (searchParams.seats) {
+        queryParams.seats = searchParams.seats;
       }
       
       console.log('Fetching rides with params:', queryParams);
@@ -162,6 +173,23 @@ const FindRide = () => {
     }
   };
   
+  const handleDateChange = (newDate) => {
+    setSearchParams(prev => ({
+      ...prev,
+      date: newDate
+    }));
+  };
+  
+  const handleSeatsChange = (e) => {
+    const value = e.target.value;
+    if (value === '' || /^[1-9]\d*$/.test(value)) {
+      setSearchParams(prev => ({
+        ...prev,
+        seats: value
+      }));
+    }
+  };
+  
   const handleSortChange = (e) => {
     setSearchParams(prev => ({
       ...prev,
@@ -183,7 +211,9 @@ const FindRide = () => {
       destination: null,
       minFare: '',
       maxFare: '',
-      sortBy: 'requestedAt'
+      sortBy: 'requestedAt',
+      date: null,
+      seats: ''
     });
     
     // Fetch rides with cleared filters
@@ -287,15 +317,15 @@ const FindRide = () => {
     switch (status) {
       case 'searching_driver':
         color = 'info';
-        label = 'Looking for driver';
+        label = 'Looking for traveler';
         break;
       case 'driver_assigned':
         color = 'primary';
-        label = 'Driver assigned';
+        label = 'Traveler assigned';
         break;
       case 'driver_arrived':
         color = 'secondary';
-        label = 'Driver arrived';
+        label = 'Traveler arrived';
         break;
       case 'in_progress':
         color = 'warning';
@@ -383,6 +413,54 @@ const FindRide = () => {
                 }}
               />
             </Grid>
+            
+            <Grid item xs={6} md={3}>
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <DatePicker
+                  label="Travel Date"
+                  value={searchParams.date}
+                  onChange={handleDateChange}
+                  renderInput={(params) => <TextField {...params} fullWidth />}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EventIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                  slotProps={{
+                    textField: { 
+                      fullWidth: true,
+                      InputProps: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <EventIcon />
+                          </InputAdornment>
+                        ),
+                      }
+                    }
+                  }}
+                />
+              </LocalizationProvider>
+            </Grid>
+            
+            <Grid item xs={6} md={3}>
+              <TextField
+                label="Number of Seats"
+                fullWidth
+                value={searchParams.seats}
+                onChange={handleSeatsChange}
+                placeholder="e.g. 2"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <AirlineSeatReclineNormalIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            
             <Grid item xs={6} md={3}>
               <TextField
                 label="Min Fare (₹)"
@@ -392,7 +470,7 @@ const FindRide = () => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <AttachMoneyIcon fontSize="small" />
+                      <CurrencyRupeeIcon fontSize="small" />
                     </InputAdornment>
                   ),
                 }}
@@ -407,7 +485,7 @@ const FindRide = () => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <AttachMoneyIcon fontSize="small" />
+                      <CurrencyRupeeIcon fontSize="small" />
                     </InputAdornment>
                   ),
                 }}
@@ -515,7 +593,7 @@ const FindRide = () => {
                         
                         <Stack direction="row" justifyContent="space-between" mb={1}>
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <AttachMoneyIcon fontSize="small" />
+                            <CurrencyRupeeIcon fontSize="small" />
                             <Typography variant="body1" fontWeight="bold">
                               ₹{ride.fare?.estimatedFare?.toFixed(2)}
                             </Typography>
@@ -695,6 +773,17 @@ const FindRide = () => {
                             <Typography variant="body1">
                               {selectedRide.user.name}
                             </Typography>
+                            
+                            {/* Display phone number if available */}
+                            {selectedRide.user.phoneNumber && (
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <PhoneIcon fontSize="small" />
+                                <Typography variant="body2">
+                                  {selectedRide.user.phoneNumber}
+                                </Typography>
+                              </Stack>
+                            )}
+                            
                             {selectedRide.user.ratings?.average > 0 && (
                               <Stack direction="row" spacing={1} alignItems="center">
                                 <Rating 
