@@ -348,6 +348,20 @@ const MyRides = () => {
   const [routePolyline, setRoutePolyline] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 20.5937, lng: 78.9629 });
   
+  // Define fetchRides function to refresh ride data
+  const fetchRides = async () => {
+    try {
+      await getUserRides();
+    } catch (error) {
+      console.error('Error fetching rides:', error);
+    }
+  };
+  
+  // Fetch rides on component mount
+  useEffect(() => {
+    fetchRides();
+  }, []);
+  
   // Fetch rides and ride offers when the component mounts
   useEffect(() => {
     const fetchData = async () => {
@@ -752,20 +766,6 @@ const MyRides = () => {
   // Handle rides with passenger requests (for ride owners)
   const hasPassengerRequests = (ride) => {
     return ride.passengers && ride.passengers.some(p => p.status === 'pending');
-  };
-  
-  // Fetch rides on component mount
-  useEffect(() => {
-    fetchRides();
-  }, []);
-  
-  // Define fetchRides function to refresh ride data
-  const fetchRides = async () => {
-    try {
-      await getUserRides();
-    } catch (error) {
-      console.error('Error fetching rides:', error);
-    }
   };
   
   return (
