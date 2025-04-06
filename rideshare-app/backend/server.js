@@ -12,23 +12,14 @@ const app = express();
 
 // Middleware
 const corsOptions = {
-  origin: function(origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'https://shareride-ten.vercel.app',
-      'https://rideshare-frontend.vercel.app',
-      'https://rideshare-app.vercel.app'
-    ];
-    // Allow requests with no origin (like mobile apps, curl requests)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(null, true); // Allow all origins in development
-    }
-  },
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  origin: [
+    'https://shareride-ten.vercel.app',
+    'http://localhost:3000',
+    'https://share-your-ride-git-master-ramyaas-projects.vercel.app',
+    'https://share-your-ride-orcin.vercel.app',
+    'https://share-your-ride.vercel.app'
+  ],
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   preflightContinue: false,
@@ -36,6 +27,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Add explicit OPTIONS handling for preflight requests
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -134,6 +129,21 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const rideRoutes = require('./routes/rides');
 const driverRoutes = require('./routes/drivers');
+
+// Set headers for all responses to handle CORS
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', corsOptions.origin.includes(req.headers.origin) ? req.headers.origin : corsOptions.origin[0]);
+  res.header('Access-Control-Allow-Methods', corsOptions.methods.join(', '));
+  res.header('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(', '));
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
