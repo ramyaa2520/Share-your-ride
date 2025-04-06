@@ -74,7 +74,10 @@ const connectDB = async () => {
         console.log('No problematic phoneNumber index found, no action needed');
       }
       
-      // Check if we need to fix the email index
+      // IMPORTANT: Fix email uniqueness indexes
+      console.log('Fixing email uniqueness indexes...');
+      
+      // First, drop ALL existing email indexes to ensure clean state
       const emailIndexes = indexes.filter(index => 
         index.key && index.key.email && index.name !== '_id_'
       );
@@ -96,7 +99,7 @@ const connectDB = async () => {
         }
       }
       
-      // Create a proper case-insensitive unique email index
+      // Create a new, proper case-insensitive unique email index
       try {
         console.log('Creating case-insensitive email index...');
         await userCollection.createIndex(
@@ -109,6 +112,21 @@ const connectDB = async () => {
           }
         );
         console.log('Email index created successfully');
+        
+        // Check for duplicate emails that might cause issues
+        const duplicateEmails = await userCollection.aggregate([
+          { $group: { _id: { email: { $toLower: "$email" } }, count: { $sum: 1 }, ids: { $push: "$_id" } } },
+          { $match: { count: { $gt: 1 } } }
+        ]).toArray();
+        
+        if (duplicateEmails.length > 0) {
+          console.warn('WARNING: Found duplicate emails (case-insensitive) that may cause issues:');
+          duplicateEmails.forEach(dup => {
+            console.warn(`  Email: ${dup._id.email}, Count: ${dup.count}, IDs: ${dup.ids.join(', ')}`);
+          });
+        } else {
+          console.log('No duplicate emails found. Email uniqueness should work correctly.');
+        }
         
         // Verify the index was created properly
         const updatedIndexes = await userCollection.indexes();

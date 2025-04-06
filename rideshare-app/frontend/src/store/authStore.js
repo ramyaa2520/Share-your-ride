@@ -394,18 +394,20 @@ export const useAuthStore = create((set, get) => ({
         if (
           (apiError.response?.data?.message && 
            typeof apiError.response.data.message === 'string' &&
-           apiError.response.data.message.toLowerCase().includes('already registered')) || 
-          (apiError.response?.data?.message && 
-           typeof apiError.response.data.message === 'string' &&
-           apiError.response.data.message.toLowerCase().includes('email is already')) ||
+           (apiError.response.data.message.toLowerCase().includes('already registered') || 
+            apiError.response.data.message.toLowerCase().includes('email is already') ||
+            apiError.response.data.message.toLowerCase().includes('email already'))) || 
           (apiError.response?.status === 400 && 
            apiError.response?.data?.status === 'fail' && 
            apiError.response?.data?.message && 
            typeof apiError.response.data.message === 'string' &&
            apiError.response.data.message.toLowerCase().includes('email'))
         ) {
-          const errorMessage = apiError.response?.data?.message || 
-            'Email is already registered. Please use a different email or login instead.';
+          const errorMessage = 'This email address is already registered. Please use a different email or sign in to your existing account.';
+          
+          // Log the detected duplicate email error
+          console.log('Duplicate email detected:', formattedUserData.email);
+          console.log('Original error message:', apiError.response?.data?.message);
           
           set({
             loading: false,

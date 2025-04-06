@@ -136,6 +136,36 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
+// Add pre-save hook to check email uniqueness with case insensitivity
+userSchema.pre('save', async function(next) {
+  // Skip this check if email isn't modified
+  if (!this.isModified('email')) return next();
+  
+  // Normalize email and check if it already exists (case-insensitive)
+  const normalizedEmail = this.email.toLowerCase().trim();
+  
+  // Set the normalized email
+  this.email = normalizedEmail;
+  
+  try {
+    // Find any user with the same email, ignoring case and this document (for updates)
+    const existingUser = await this.constructor.findOne({
+      email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') },
+      _id: { $ne: this._id } // Exclude the current document for updates
+    });
+    
+    if (existingUser) {
+      const error = new Error('Email is already registered. Please use a different email or login instead.');
+      error.name = 'ValidationError';
+      return next(error);
+    }
+    
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // Method to compare passwords during login
 userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword);

@@ -59,16 +59,30 @@ exports.signup = async (req, res) => {
     console.log('Checking for existing user with email:', normalizedEmail);
     
     try {
-      // Check if user with email already exists - use case-insensitive comparison
-      // Using a safer regex pattern to avoid ReDos vulnerabilities
-      const existingUser = await User.findOne({ 
-        email: { $regex: new RegExp('^' + normalizedEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') } 
-      });
+      // Use a direct find with case-insensitive collation instead of regex
+      // This is more efficient and reliable for email uniqueness checks
+      const existingUser = await User.findOne({ email: normalizedEmail })
+        .collation({ locale: 'en', strength: 2 });
       
       console.log('Existing user lookup result:', existingUser ? 'Found' : 'Not found');
       
       if (existingUser) {
         console.log('User with this email already exists:', existingUser._id);
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Email is already registered. Please use a different email or login instead.'
+        });
+      }
+      
+      // Check if there are any users with very similar emails (different case)
+      // This is a double-check to avoid case sensitivity issues
+      const similarEmailUsers = await User.find({
+        email: { $regex: new RegExp('^' + normalizedEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') }
+      });
+      
+      if (similarEmailUsers && similarEmailUsers.length > 0) {
+        console.log('Found users with similar email (different case):', 
+          similarEmailUsers.map(u => u.email));
         return res.status(400).json({
           status: 'fail',
           message: 'Email is already registered. Please use a different email or login instead.'

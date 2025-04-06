@@ -176,7 +176,11 @@ const Register = () => {
   };
   
   // Detect if the error is a duplicate email error
-  const isDuplicateEmailError = error && error.toLowerCase().includes('already registered');
+  const isDuplicateEmailError = error && (
+    error.toLowerCase().includes('already registered') || 
+    error.toLowerCase().includes('email is already') ||
+    error.toLowerCase().includes('use a different email')
+  );
   
   return (
     <Container component="main" maxWidth="sm">
@@ -245,15 +249,24 @@ const Register = () => {
                       component={Link} 
                       to="/login"
                       variant="outlined"
-                      sx={{ whiteSpace: 'nowrap' }}
+                      sx={{ whiteSpace: 'nowrap', fontWeight: 'bold' }}
                     >
-                      Go to Login
+                      Sign In Now
                     </Button>
                   )
                 }
               >
                 {isDuplicateEmailError 
-                  ? `An account with this email already exists. Please use a different email or log in.`
+                  ? (
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        Email Already Registered
+                      </Typography>
+                      <Typography variant="body2">
+                        This email address is already in use. Please use a different email or sign in to your existing account.
+                      </Typography>
+                    </Box>
+                  )
                   : error
                 }
               </Alert>
