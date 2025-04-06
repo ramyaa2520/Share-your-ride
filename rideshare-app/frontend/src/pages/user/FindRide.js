@@ -68,7 +68,8 @@ const FindRide = () => {
     pagination,
     getAvailableRides, 
     loading, 
-    error 
+    error,
+    setLoading
   } = useRideStore();
   
   const { user } = useAuthStore();
@@ -367,7 +368,7 @@ const FindRide = () => {
   const handleRequestRide = async (rideId) => {
     try {
       setRequestingRideId(rideId);
-      setLoading(true);
+      // Use the store's loading state instead of a local one
       // Call the requestRide function from the store
       await useRideStore.getState().requestRide(rideId);
       // Show success message
@@ -379,7 +380,6 @@ const FindRide = () => {
       alert('Failed to request ride. Please try again.');
     } finally {
       setRequestingRideId(null);
-      setLoading(false);
     }
   };
   

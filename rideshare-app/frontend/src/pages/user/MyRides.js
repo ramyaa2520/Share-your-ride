@@ -754,6 +754,20 @@ const MyRides = () => {
     return ride.passengers && ride.passengers.some(p => p.status === 'pending');
   };
   
+  // Fetch rides on component mount
+  useEffect(() => {
+    fetchRides();
+  }, []);
+  
+  // Define fetchRides function to refresh ride data
+  const fetchRides = async () => {
+    try {
+      await getUserRides();
+    } catch (error) {
+      console.error('Error fetching rides:', error);
+    }
+  };
+  
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>

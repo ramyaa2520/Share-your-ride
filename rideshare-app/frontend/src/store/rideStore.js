@@ -44,6 +44,11 @@ api.interceptors.response.use(
   }
 );
 
+// Generate a unique ID for development mode
+const generateId = () => {
+  return `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+};
+
 export const useRideStore = create((set, get) => ({
   rides: [],
   rideOffers: [], // Add ride offers array to store available ride offers
@@ -1611,9 +1616,4 @@ export const useRideStore = create((set, get) => ({
       throw error;
     }
   },
-
-  // Generate a unique ID for development mode
-  generateId: () => {
-    return `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  }
 })); 
