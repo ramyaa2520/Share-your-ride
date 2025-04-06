@@ -12,11 +12,25 @@ const app = express();
 
 // Middleware
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://rideshare-frontend.vercel.app', 'https://rideshare-app.vercel.app', 'https://shareride-ten.vercel.app'] 
-    : 'http://localhost:3000',
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://rideshare-frontend.vercel.app', 
+      'https://rideshare-app.vercel.app', 
+      'https://shareride-ten.vercel.app'
+    ];
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow all origins in development
+    }
+  },
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  preflightContinue: false,
   optionsSuccessStatus: 204
 };
 

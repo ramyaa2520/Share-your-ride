@@ -37,10 +37,20 @@ exports.signup = async (req, res) => {
     // Extract fields from request
     const { name, email, password } = req.body;
     
-    if (!email) {
+    // Validate required fields
+    if (!name || !email || !password) {
+      console.log('Missing required fields');
       return res.status(400).json({
         status: 'fail',
-        message: 'Email is required'
+        message: 'Name, email, and password are required'
+      });
+    }
+    
+    if (password.length < 8) {
+      console.log('Password too short');
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Password must be at least 8 characters long'
       });
     }
     
@@ -50,6 +60,7 @@ exports.signup = async (req, res) => {
     
     try {
       // Check if user with email already exists - use case-insensitive comparison
+      // Using a safer regex pattern to avoid ReDos vulnerabilities
       const existingUser = await User.findOne({ 
         email: { $regex: new RegExp('^' + normalizedEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', 'i') } 
       });
@@ -69,9 +80,9 @@ exports.signup = async (req, res) => {
       
       // Create a new user with required fields
       const newUser = await User.create({
-        name,
+        name: name.trim(),
         email: normalizedEmail,
-        password
+        password: password // Will be hashed by the model's pre-save hook
       });
       
       console.log('User created successfully with ID:', newUser._id);
@@ -84,6 +95,7 @@ exports.signup = async (req, res) => {
       // Remove password from output
       newUser.password = undefined;
 
+      // Send the successful response
       res.status(201).json({
         status: 'success',
         token,
@@ -119,7 +131,8 @@ exports.signup = async (req, res) => {
     console.error('Signup error:', err);
     res.status(500).json({
       status: 'error',
-      message: 'Error creating user account. Please try again later.'
+      message: 'Error creating user account. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
@@ -170,21 +183,29 @@ exports.driverSignup = async (req, res) => {
 // User login
 exports.login = async (req, res) => {
   try {
+    console.log('Login attempt with data:', JSON.stringify(req.body));
     const { email, password } = req.body;
 
     // Check if email and password exist
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({
         status: 'fail',
         message: 'Please provide email and password'
       });
     }
 
+    // Normalize email
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Find user by email with password field
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    
+    console.log('User lookup result:', user ? 'Found' : 'Not found');
 
     // Check if user exists & password is correct
     if (!user || !(await user.correctPassword(password, user.password))) {
+      console.log('Invalid login credentials');
       return res.status(401).json({
         status: 'fail',
         message: 'Incorrect email or password'
@@ -223,9 +244,11 @@ exports.login = async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('Login error:', err);
     res.status(400).json({
       status: 'fail',
-      message: err.message
+      message: 'An error occurred during login. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };

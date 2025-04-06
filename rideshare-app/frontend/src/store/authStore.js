@@ -3,14 +3,17 @@ import { toast } from 'react-toastify';
 import axios from 'axios';
 
 // Update the API calls to use environment variable for API URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://rideshare-backend-aau6.onrender.com/api';
 
 // Add a utility function to create axios instance with proper configuration
 const api = axios.create({
   baseURL: API_URL,
   headers: {
-    'Content-Type': 'application/json'
-  }
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  timeout: 15000, // 15 seconds timeout
+  withCredentials: false // Must be false for cross-domain requests
 });
 
 // Add an interceptor to attach the token to every request
@@ -20,17 +23,42 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Log request for debugging
+    console.log('Making API request:', {
+      url: config.url,
+      method: config.method,
+      data: config.data,
+      headers: config.headers
+    });
+    
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('Request error interceptor:', error);
+    return Promise.reject(error);
+  }
 );
 
 // Add response interceptor to handle auth errors globally
 api.interceptors.response.use(
   (response) => {
+    console.log('API response:', {
+      url: response.config.url,
+      status: response.status,
+      data: response.data
+    });
     return response;
   },
   (error) => {
+    console.error('API Error in interceptor:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       // Clear token on auth errors
       console.log('Authentication error in API response, clearing token');
@@ -244,16 +272,32 @@ export const useAuthStore = create((set, get) => ({
     try {
       console.log('Registration attempt with data:', userData);
       
-      // Ensure email is properly formatted before sending
-      if (userData.email) {
-        userData.email = userData.email.toLowerCase().trim();
+      // Format user data correctly
+      const formattedUserData = {
+        name: userData.name?.trim(),
+        email: userData.email?.toLowerCase().trim(),
+        password: userData.password
+      };
+      
+      // Validate input data before sending
+      if (!formattedUserData.name || !formattedUserData.email || !formattedUserData.password) {
+        const missingFields = [];
+        if (!formattedUserData.name) missingFields.push('name');
+        if (!formattedUserData.email) missingFields.push('email');
+        if (!formattedUserData.password) missingFields.push('password');
+        
+        const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
+        set({ loading: false, error: errorMessage });
+        toast.error(errorMessage);
+        return false;
       }
       
-      // Ensure there's no phone number field at all in the userData
-      if (userData.phoneNumber || userData.phoneCountryCode) {
-        console.log('Removing phone number fields from registration data');
-        const { phoneNumber, phoneCountryCode, ...cleanUserData } = userData;
-        userData = cleanUserData;
+      // Ensure password meets requirements
+      if (formattedUserData.password.length < 8) {
+        const errorMessage = 'Password must be at least 8 characters long';
+        set({ loading: false, error: errorMessage });
+        toast.error(errorMessage);
+        return false;
       }
       
       set({ loading: true });
@@ -261,13 +305,13 @@ export const useAuthStore = create((set, get) => ({
       // DEVELOPMENT MODE - For testing frontend without backend
       if (isDevelopmentWithoutBackend()) {
         console.log('Development mode: Simulating successful registration');
-        console.log('User data:', userData);
+        console.log('User data:', formattedUserData);
 
         // Create a fake user object
         const fakeUser = {
           id: 'test-user-id',
-          name: userData.name,
-          email: userData.email,
+          name: formattedUserData.name,
+          email: formattedUserData.email,
           role: 'user',
           createdAt: new Date().toISOString()
         };
@@ -293,23 +337,27 @@ export const useAuthStore = create((set, get) => ({
       }
 
       // PRODUCTION MODE - Real API call
-      console.log('Sending registration request to API server:', `${API_URL}/auth/signup`);
-      console.log('Registration payload:', JSON.stringify(userData));
+      console.log('Sending registration request to backend:', `${API_URL}/auth/signup`);
+      console.log('Registration payload:', JSON.stringify(formattedUserData));
       
       try {
-        const response = await api.post('/auth/signup', userData);
+        // Try to register the user with the backend
+        const response = await api.post('/auth/signup', formattedUserData);
         console.log('Registration response:', response.data);
 
+        // Check if we got a valid response
         if (!response.data) {
           throw new Error('Empty response received from server');
         }
 
         const { token, data, status } = response.data;
         
+        // Check for failure status in response
         if (status === 'fail') {
           throw new Error(response.data.message || 'Registration failed');
         }
         
+        // Validate response structure
         if (!token || !data || !data.user) {
           console.error('Invalid response format from API:', response.data);
           throw new Error('Invalid response received from server');
@@ -319,6 +367,7 @@ export const useAuthStore = create((set, get) => ({
         localStorage.setItem('token', token);
         localStorage.setItem('userData', JSON.stringify(data.user));
         
+        // Update state with user data
         set({
           user: data.user,
           isAuthenticated: true,
@@ -326,42 +375,66 @@ export const useAuthStore = create((set, get) => ({
           error: null
         });
 
+        // Show success message
         toast.success('Registration successful');
         return true;
       } catch (apiError) {
+        // Handle API errors specifically
         console.error('API Error during registration:', apiError);
         
         if (apiError.response) {
-          console.error('API Error response:', {
+          console.error('API Error response details:', {
             status: apiError.response.status,
             statusText: apiError.response.statusText,
-            data: apiError.response.data
+            data: JSON.stringify(apiError.response.data)
           });
         }
         
-        // Handle duplicate email errors - make this check more robust
+        // Handle duplicate email errors
         if (
-          (apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('already registered')) || 
-          (apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('email is already')) ||
-          (apiError.response?.status === 400 && apiError.response?.data?.status === 'fail' && 
-           apiError.response?.data?.message && apiError.response.data.message.toLowerCase().includes('email'))
+          (apiError.response?.data?.message && 
+           typeof apiError.response.data.message === 'string' &&
+           apiError.response.data.message.toLowerCase().includes('already registered')) || 
+          (apiError.response?.data?.message && 
+           typeof apiError.response.data.message === 'string' &&
+           apiError.response.data.message.toLowerCase().includes('email is already')) ||
+          (apiError.response?.status === 400 && 
+           apiError.response?.data?.status === 'fail' && 
+           apiError.response?.data?.message && 
+           typeof apiError.response.data.message === 'string' &&
+           apiError.response.data.message.toLowerCase().includes('email'))
         ) {
-          const errorMessage = apiError.response?.data?.message || 'Email is already registered. Please use a different email or login instead.';
+          const errorMessage = apiError.response?.data?.message || 
+            'Email is already registered. Please use a different email or login instead.';
+          
           set({
             loading: false,
             error: errorMessage
           });
+          
           toast.error(errorMessage);
           return false;
         }
         
         // Handle validation errors
         if (apiError.response?.status === 400) {
-          const errorMessage = apiError.response?.data?.message || 'Validation failed. Please check your input and try again.';
+          let errorMessage = apiError.response?.data?.message || 
+            'Validation failed. Please check your input and try again.';
+          
+          // Use response.data directly if message is not available
+          if (!errorMessage && apiError.response.data) {
+            if (typeof apiError.response.data === 'string') {
+              errorMessage = apiError.response.data;
+            } else if (typeof apiError.response.data === 'object') {
+              errorMessage = JSON.stringify(apiError.response.data);
+            }
+          }
+          
           set({
             loading: false,
             error: errorMessage
           });
+          
           toast.error(errorMessage);
           return false;
         }
@@ -372,24 +445,44 @@ export const useAuthStore = create((set, get) => ({
             loading: false,
             error: 'Server error occurred. Please try again later.'
           });
+          
           toast.error('Server error occurred. Please try again later.');
           return false;
         }
         
         // For connection issues
         if (!apiError.response) {
+          const errorMessage = 'Could not connect to the server. Please check your internet connection and try again.';
+          
           set({
             loading: false,
-            error: 'Could not connect to the server. Please check your internet connection and try again.'
+            error: errorMessage
           });
+          
           toast.error('Connection failed. Please check your internet connection.');
           return false;
         }
         
-        // For other API errors, use the general handler
-        throw apiError;
+        // Default error handling for unhandled cases
+        let errorMessage = 'Registration failed';
+        
+        if (apiError.response?.data?.message) {
+          errorMessage = typeof apiError.response.data.message === 'string' ? 
+            apiError.response.data.message : JSON.stringify(apiError.response.data.message);
+        } else if (apiError.message) {
+          errorMessage = apiError.message;
+        }
+        
+        set({
+          loading: false,
+          error: errorMessage
+        });
+        
+        toast.error(errorMessage);
+        return false;
       }
     } catch (error) {
+      // Catch-all error handler
       console.error('Registration failed:', error);
       console.error('Error details:', {
         response: error.response,
@@ -400,10 +493,13 @@ export const useAuthStore = create((set, get) => ({
       
       // More specific error handling
       let errorMessage = 'Registration failed';
+      
       if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+        errorMessage = typeof error.response.data.message === 'string' ? 
+          error.response.data.message : JSON.stringify(error.response.data.message);
       } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+        errorMessage = typeof error.response.data.error === 'string' ? 
+          error.response.data.error : JSON.stringify(error.response.data.error);
       } else if (error.message) {
         errorMessage = error.message;
       }
