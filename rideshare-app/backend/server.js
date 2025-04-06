@@ -14,9 +14,6 @@ const app = express();
 const corsOptions = {
   origin: function(origin, callback) {
     const allowedOrigins = [
-      'http://localhost:3000',
-      'https://rideshare-frontend.vercel.app', 
-      'https://rideshare-app.vercel.app', 
       'https://shareride-ten.vercel.app'
     ];
     // Allow requests with no origin (like mobile apps, curl requests)
